@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Raw data — do NOT commit
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.json
+data/
+raw/
+datasets/
