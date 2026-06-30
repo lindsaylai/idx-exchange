@@ -1,0 +1,6 @@
+venv/
+.env
+*.csv
+*.sql
+*.xlsx
+.DS_Store
