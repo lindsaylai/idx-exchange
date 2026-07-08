@@ -57,9 +57,12 @@ openclaw channels login --channel whatsapp
 idx-exchange/
 ├── skills/
 │   └── property-search/
-│       ├── SKILL.md          # OpenClaw skill definition
-│       ├── parse_query.py    # NL query → structured filters
-│       └── test_parse_query.py
+│       ├── SKILL.md              # OpenClaw skill definition
+│       ├── parse_query.py        # NL query → structured filters
+│       ├── test_parse_query.py
+│       ├── db.py                 # MySQL connection pool
+│       ├── search_listings.py    # searchActiveListings() + getSoldComps()
+│       └── test_search_listings.py
 ├── docs/
 │   └── architecture.md       # Full system architecture + flow diagrams
 ├── data/                     # SQL dumps (gitignored)
@@ -73,7 +76,7 @@ idx-exchange/
 | 0 | Environment Setup | Done |
 | 1 | OpenClaw Architecture | Done |
 | 2 | NL Property Search | Done |
-| 3 | Database Integration | — |
+| 3 | Database Integration | Done |
 | 4 | Conversational Agent | — |
 | 5 | Market Analytics | — |
 | 6 | Embeddings & Vector Search | — |

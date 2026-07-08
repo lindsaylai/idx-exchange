@@ -234,7 +234,7 @@ flowchart TB
 | Week | Module | Adds to architecture |
 |------|--------|----------------------|
 | 2 | NL Property Search | `parsePropertyQuery` tool |
-| 3 | Database Integration | MySQL connection pool + search tools |
+| 3 | Database Integration | MySQL connection pool + search tools — Done |
 | 4 | Conversational Agent | Session memory + follow-ups |
 | 5 | Market Analytics | `california_sold` aggregation tools |
 | 6 | Embeddings | Vector search over `L_Remarks` |
