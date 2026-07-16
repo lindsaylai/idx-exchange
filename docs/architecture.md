@@ -236,7 +236,7 @@ flowchart TB
 | 2 | NL Property Search | `parsePropertyQuery` tool |
 | 3 | Database Integration | MySQL connection pool + search tools — Done |
 | 4 | Conversational Agent | Session memory + follow-ups — Done |
-| 5 | Market Analytics | `california_sold` aggregation tools |
+| 5 | Market Analytics | `california_sold` aggregation tools — Done |
 | 6 | Embeddings | Vector search over `L_Remarks` |
 | 7 | Recommendations | Hybrid scoring + comp validation |
 | 8 | RAG | Document retrieval for MLS terminology |

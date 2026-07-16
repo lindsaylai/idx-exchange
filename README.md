@@ -64,7 +64,12 @@ idx-exchange/
 │       ├── search_listings.py    # searchActiveListings() + getSoldComps()
 │       ├── test_search_listings.py
 │       ├── session.py            # multi-turn conversation + session memory
-│       └── test_session.py
+│       ├── test_session.py
+│       └── chat.py               # interactive CLI for manual testing
+│   └── market-stats/
+│       ├── SKILL.md
+│       ├── market_stats.py       # city summaries, median price, DOM, trends
+│       └── test_market_stats.py
 ├── docs/
 │   └── architecture.md       # Full system architecture + flow diagrams
 ├── data/                     # SQL dumps (gitignored)
@@ -80,7 +85,7 @@ idx-exchange/
 | 2 | NL Property Search | Done |
 | 3 | Database Integration | Done |
 | 4 | Conversational Agent | Done |
-| 5 | Market Analytics | — |
+| 5 | Market Analytics | Done |
 | 6 | Embeddings & Vector Search | — |
 | 7 | Recommendation Engine | — |
 | 8 | RAG Pipeline | — |
