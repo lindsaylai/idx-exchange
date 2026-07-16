@@ -43,7 +43,7 @@ tests = [
     ),
     (
         "Show me SFR listings in Glendale with HOA under $300",
-        {"city": "Glendale", "type": "SingleFamilyResidence", "maxHOA": 300},
+        {"city": "Glendale", "type": "SingleFamilyResidence", "maxHOA": 300, "maxPrice": None},
     ),
     (
         "4 bedroom houses in Riverside under $600k with a pool and a view",
@@ -69,6 +69,19 @@ tests = [
         "Find me a condo in Newport Beach with ocean view under $3 million",
         {"city": "Newport Beach", "maxPrice": 3_000_000, "type": "Condominium", "hasView": "True"},
     ),
+    # bare budget mentions (no "under") — e.g. a direct answer to "what's your budget?"
+    ("2M", {"maxPrice": 2_000_000}),
+    ("2mil", {"maxPrice": 2_000_000}),
+    ("budget is 2 million", {"maxPrice": 2_000_000}),
+    ("about $900,000", {"maxPrice": 900_000}),
+    # common city abbreviations
+    ("hi i need homes in sf, ca", {"city": "San Francisco"}),
+    ("homes in la under $900k", {"city": "Los Angeles", "maxPrice": 900_000}),
+    # type keywords must respect word boundaries, not match as a substring of
+    # an unrelated word (e.g. "land" inside "oakland") or fail on plurals
+    ("oakland", {"type": None}),
+    ("condos in oakland", {"type": "Condominium"}),
+    ("townhouses in torrance", {"type": "Townhouse"}),
 ]
 
 passed = sum(test(q, exp) for q, exp in tests)

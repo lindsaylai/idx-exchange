@@ -12,6 +12,13 @@ TYPE_MAP = {
     "duplex":        "Duplex",
 }
 
+# Common colloquial abbreviations that don't match rets_property.L_City as typed.
+CITY_ABBREVIATIONS = {
+    "sf": "San Francisco",
+    "la": "Los Angeles",
+    "sd": "San Diego",
+}
+
 
 def parse_property_query(query: str) -> dict:
     """
@@ -31,17 +38,28 @@ def parse_property_query(query: str) -> dict:
         re.IGNORECASE,
     )
     city = city_match.group(1).strip().title() if city_match else None
+    if city and city.lower() in CITY_ABBREVIATIONS:
+        city = CITY_ABBREVIATIONS[city.lower()]
+
+    # --- max HOA (computed early so its "under $X" span doesn't get
+    # double-counted as the home price below) ---
+    hoa_match = re.search(r"hoa\s+(?:under|below|max|<)?\s*\$?([\d,]+)", q)
+    max_hoa = int(hoa_match.group(1).replace(",", "")) if hoa_match else None
+    q_for_price = q[:hoa_match.start()] + q[hoa_match.end():] if hoa_match else q
 
     # --- max price ---
-    price_match = re.search(
-        r"under\s+\$?([\d,]+(?:\.\d+)?)\s*(k|m|million|thousand)?",
-        q,
+    # Prefer an explicit "under $X" cap; fall back to a bare budget mention
+    # (e.g. a direct answer to "what's your budget?" like "2M" or "$2 million").
+    price_match = (
+        re.search(r"under\s+\$?([\d,]+(?:\.\d+)?)\s*(k|m|mil|million|thousand)?", q_for_price)
+        or re.search(r"\$\s?([\d,]+(?:\.\d+)?)\s*(k|m|mil|million|thousand)?\b", q_for_price)
+        or re.search(r"\b([\d,]+(?:\.\d+)?)\s*(k|m|mil|million|thousand)\b", q_for_price)
     )
     max_price = None
     if price_match:
         raw = float(price_match.group(1).replace(",", ""))
         suffix = (price_match.group(2) or "").lower()
-        if suffix in ("m", "million"):
+        if suffix in ("m", "mil", "million"):
             raw *= 1_000_000
         elif suffix in ("k", "thousand"):
             raw *= 1_000
@@ -62,7 +80,7 @@ def parse_property_query(query: str) -> dict:
     # --- property type ---
     prop_type = None
     for keyword, db_value in TYPE_MAP.items():
-        if keyword in q:
+        if re.search(rf"\b{re.escape(keyword)}(?:es|s)?\b", q):
             prop_type = db_value
             break
 
@@ -71,10 +89,6 @@ def parse_property_query(query: str) -> dict:
 
     # --- view ---
     has_view = "True" if re.search(r"\bview\b", q) else None
-
-    # --- max HOA ---
-    hoa_match = re.search(r"hoa\s+(?:under|below|max|<)?\s*\$?([\d,]+)", q)
-    max_hoa = int(hoa_match.group(1).replace(",", "")) if hoa_match else None
 
     return {
         "city":     city,

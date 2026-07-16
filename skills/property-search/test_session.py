@@ -49,6 +49,32 @@ reply = handleMessage("one-shot-user", "3-bedroom condos in Irvine under $1.5M w
 results.append(check("fully-specified single message skips the Q&A", not is_question(reply)))
 results.append(check("result card includes a photo count", "photos" in reply))
 
+# --- regression: a bare "2M" answer to the budget question must not loop forever ---
+clearSession("regression-user")
+reply1 = handleMessage("regression-user", "hi i need homes in sf, ca")
+results.append(check("regression turn 1 asks for budget", "budget" in reply1.lower()))
+
+reply2 = handleMessage("regression-user", "2M")
+results.append(check("regression turn 2 moves on instead of re-asking for budget", "budget" not in reply2.lower()))
+results.append(check("regression turn 2 recorded maxPrice from the bare '2M' answer", getSession("regression-user")["maxPrice"] == 2_000_000))
+
+reply3 = handleMessage("regression-user", "condo")
+results.append(check("regression turn 3 returns results, not another question", not is_question(reply3)))
+results.append(check("regression turn 3 resolved the 'sf' abbreviation to San Francisco", "San Francisco" in reply3))
+
+# --- regression: a bare one-word city reply (no "in" phrasing) must not loop forever,
+# and must not be misparsed as a property type ("oakland" contains "land") ---
+clearSession("bare-city-user")
+reply1 = handleMessage("bare-city-user", "hi")
+results.append(check("bare-city turn 1 asks for city", "city" in reply1.lower()))
+
+reply2 = handleMessage("bare-city-user", "oakland")
+results.append(check("bare-city turn 2 moves on instead of re-asking for city", "city" not in reply2.lower()))
+results.append(check(
+    "bare-city turn 2 recorded 'Oakland' as the city, not UnimprovedLand as the type",
+    getSession("bare-city-user")["city"] == "Oakland" and getSession("bare-city-user")["type"] is None,
+))
+
 # --- sessions are isolated per user ---
 clearSession("user-a")
 clearSession("user-b")
