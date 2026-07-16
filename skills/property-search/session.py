@@ -9,7 +9,9 @@ results exist, every new message is treated as a refinement and
 immediately re-searches with the updated filters.
 """
 
-from parse_query import parse_property_query
+import re
+
+from parse_query import parse_property_query, CITY_ABBREVIATIONS
 from search_listings import searchActiveListings, format_listing_card
 
 _FILTER_KEYS = ("city", "maxPrice", "beds", "baths", "sqft", "type", "pool", "hasView", "maxHOA")
@@ -21,6 +23,7 @@ def _default_session() -> dict:
     session = {key: None for key in _FILTER_KEYS}
     session["lastResults"] = None
     session["conversationStep"] = 0
+    session["awaiting"] = None
     return session
 
 
@@ -47,6 +50,25 @@ def _merge_filters(session: dict, message: str) -> None:
             session[key] = parsed[key]
 
 
+def _apply_pending_answer(session: dict, message: str) -> None:
+    """
+    parse_property_query() expects full sentences ("in Oakland", "under
+    $900k") and returns None for bare replies like a one-word answer to
+    "What city are you interested in?". If the field we just asked about is
+    still unset after the general-purpose parse, treat the raw reply as a
+    direct answer to that specific question instead of asking it again.
+    """
+    awaiting = session.get("awaiting")
+    stripped = message.strip()
+
+    if awaiting == "city" and session["city"] is None and stripped:
+        city = stripped.title()
+        session["city"] = CITY_ABBREVIATIONS.get(city.lower(), city)
+    elif awaiting == "maxPrice" and session["maxPrice"] is None:
+        if re.fullmatch(r"\$?[\d,]+(?:\.\d+)?", stripped):
+            session["maxPrice"] = int(float(stripped.replace("$", "").replace(",", "")))
+
+
 def _search_and_format(session: dict) -> str:
     filters = {key: session[key] for key in _FILTER_KEYS}
     results = searchActiveListings(filters, page=1, limit=5)
@@ -60,17 +82,23 @@ def handleMessage(user_id: str, message: str) -> str:
     """Process one turn of conversation and return the agent's reply."""
     session = getSession(user_id)
     _merge_filters(session, message)
+    _apply_pending_answer(session, message)
     session["conversationStep"] += 1
 
     # Once we've searched at least once, treat every new message as a refinement.
     if session["lastResults"] is not None:
+        session["awaiting"] = None
         return _search_and_format(session)
 
     if session["city"] is None:
+        session["awaiting"] = "city"
         return "What city are you interested in?"
     if session["maxPrice"] is None:
+        session["awaiting"] = "maxPrice"
         return "What is your budget?"
     if session["type"] is None:
+        session["awaiting"] = "type"
         return "Any preferences — condo, townhome, or single family?"
 
+    session["awaiting"] = None
     return _search_and_format(session)
