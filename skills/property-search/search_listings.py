@@ -14,7 +14,7 @@ _TRUE_FLAG = "1"
 _ACTIVE_LISTING_COLUMNS = """
     L_ListingID, L_Address, L_City, L_SystemPrice,
     L_Keyword2 AS beds, LM_Dec_3 AS baths, LM_Int2_3 AS sqft,
-    L_Type_ AS propertyType, PoolPrivateYN, ViewYN, AssociationFee
+    L_Type_ AS propertyType, PoolPrivateYN, ViewYN, AssociationFee, PhotoCount
 """
 
 # Each entry: filters key -> (column, SQL comparator, value transform)
@@ -74,9 +74,11 @@ def format_listing_card(row: dict) -> str:
     if row.get("ViewYN") == _TRUE_FLAG:
         tags.append("view")
     tag_str = f" [{', '.join(tags)}]" if tags else ""
+    photos = row.get("PhotoCount")
+    photo_str = f", {photos} photos" if photos is not None else ""
     return (
         f"{row['L_Address']}, {row['L_City']} — {price}\n"
-        f"{beds}bd/{baths}ba, {sqft}, {row['propertyType']}{tag_str}"
+        f"{beds}bd/{baths}ba, {sqft}, {row['propertyType']}{photo_str}{tag_str}"
     )
 
 
