@@ -76,6 +76,7 @@ Modular capability units — each skill teaches the agent how to handle a class 
 |-----------------|------|------|
 | `property-search` | 2–3 | Parse NL queries → query `rets_property` |
 | `market-stats` | 5 | Aggregations over `california_sold` |
+| `semantic-search` | 6 | Embedding-based similarity search over `L_Remarks` |
 | `recommendation` | 7 | Similar listings + comp validation |
 | `rag-knowledge` | 8 | MLS field definitions & RE terminology |
 | `orchestrator` | 9 | Route mixed-intent queries to agents |
@@ -99,6 +100,8 @@ Examples in this project:
 - `parsePropertyQuery(query)` — regex NLP → structured filters (Week 2)
 - `searchActiveListings(filters)` — parameterized SQL on `rets_property` (Week 3)
 - `getSoldComps(city, months)` — SQL on `california_sold` (Week 3)
+- `semantic_search(query)` — embeds `query` and ranks listings by cosine
+  similarity over a cached `L_Remarks` vector index (Week 6)
 
 Tools must use **parameterized queries** (`?` placeholders) — never string-concatenate user input into SQL.
 
@@ -107,7 +110,7 @@ Tools must use **parameterized queries** (`?` placeholders) — never string-con
 Two layers:
 
 - **Short-term (session):** in-memory map keyed by user ID; holds active search filters and last result set.
-- **Long-term (later weeks):** vector storage for embeddings over listing remarks and RAG document chunks.
+- **Long-term:** a cached `numpy` vector index over listing remarks (Week 6, `semantic-search`), and later RAG document chunks.
 
 Session memory is updated after each turn so follow-up messages like “make it under $1.2M” merge into the existing search.
 
@@ -237,7 +240,7 @@ flowchart TB
 | 3 | Database Integration | MySQL connection pool + search tools — Done |
 | 4 | Conversational Agent | Session memory + follow-ups — Done |
 | 5 | Market Analytics | `california_sold` aggregation tools — Done |
-| 6 | Embeddings | Vector search over `L_Remarks` |
+| 6 | Embeddings | Vector search over `L_Remarks` — Done |
 | 7 | Recommendations | Hybrid scoring + comp validation |
 | 8 | RAG | Document retrieval for MLS terminology |
 | 9 | Multi-Agent Orchestration | Intent router across all agents |
