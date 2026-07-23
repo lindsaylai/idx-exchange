@@ -70,6 +70,10 @@ idx-exchange/
 │       ├── SKILL.md
 │       ├── market_stats.py       # city summaries, median price, DOM, trends
 │       └── test_market_stats.py
+│   └── semantic-search/
+│       ├── SKILL.md
+│       ├── semantic_search.py    # embeddings + cosine-similarity search over L_Remarks
+│       └── test_semantic_search.py
 ├── docs/
 │   └── architecture.md       # Full system architecture + flow diagrams
 ├── data/                     # SQL dumps (gitignored)
@@ -86,7 +90,7 @@ idx-exchange/
 | 3 | Database Integration | Done |
 | 4 | Conversational Agent | Done |
 | 5 | Market Analytics | Done |
-| 6 | Embeddings & Vector Search | — |
+| 6 | Embeddings & Vector Search | Done |
 | 7 | Recommendation Engine | — |
 | 8 | RAG Pipeline | — |
 | 9 | Multi-Agent Orchestration | — |
