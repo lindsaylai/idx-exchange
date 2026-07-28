@@ -1,8 +1,25 @@
+---
+name: semantic-search
+description: Semantic similarity search over active MLS listings via OpenAI embeddings (TF-IDF fallback) for fuzzy, descriptive property queries beyond structured filters.
+metadata:
+  {
+    "openclaw":
+      {
+        "requires":
+          {
+            "bins": ["python3"],
+            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"],
+          },
+      },
+  }
+---
+
 # semantic-search
 
 Answers fuzzy, descriptive queries ("something cozy with mountain views", "a
-fixer-upper with potential") by embedding `rets_property.L_Remarks` and
-ranking listings by cosine similarity, instead of matching on structured
+fixer-upper with potential") by embedding each listing's type, city,
+beds/baths, sqft, year built, and price alongside `rets_property.L_Remarks`,
+then ranking listings by cosine similarity, instead of matching on structured
 filters alone.
 
 ## When to use
@@ -38,9 +55,10 @@ for hit in semantic_search('cozy mountain cabin with a view', top_k=5):
 - `embed_texts(texts, batch_size)` — embeds a list of strings with OpenAI
   `text-embedding-3-small`, chunked into batches of `batch_size`.
 - `build_index(limit, vectors_path, meta_path)` — pulls `limit` active
-  listings with non-empty `L_Remarks`, embeds the remarks, and caches the
-  vectors (`.npy`) + metadata (`.json`) to `data/`. Returns the row count
-  indexed.
+  listings with non-empty `L_Remarks`, embeds a combined
+  type/city/beds/baths/sqft/year/price/remarks string per listing (see
+  `_listing_embedding_text()`), and caches the vectors (`.npy`) + metadata
+  (`.json`) to `data/`. Returns the row count indexed.
 - `semantic_search(query, top_k, vectors_path, meta_path)` — embeds `query`
   and returns the `top_k` most similar cached listings, ranked by cosine
   similarity (`scikit-learn`'s `cosine_similarity`), each tagged with `score`.

@@ -104,9 +104,12 @@ idx-exchange/
 
 ## Tech Stack
 
-- **Agent runtime:** OpenClaw
-- **LLM:** Gemini 2.5 Flash
 - **Database:** MySQL
-- **Language:** Python 3.11 + TypeScript
-- **Embeddings:** OpenAI `text-embedding-3-small`
-- **Channel:** WhatsApp
+- **Language:** Python 3.11
+- **Embeddings:** OpenAI `text-embedding-3-small` (TF-IDF fallback if the API is unreachable)
+
+**Planned (Week 9+, not yet implemented):** OpenClaw agent runtime, Gemini as
+the orchestrating LLM, WhatsApp as the delivery channel. Weeks 0–7 run as
+plain Python skills invoked directly (see `chat.py`) — there's no LLM-driven
+intent routing or tool-calling loop yet, and no OpenClaw/WhatsApp wiring in
+this repo.
