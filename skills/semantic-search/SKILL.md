@@ -14,7 +14,7 @@ than hard filters — e.g.:
 - "I want a fixer-upper with potential in the hills"
 
 For hard filters (city, price, beds, baths) prefer `property-search`; the two
-can be combined later (Week 7 hybrid scoring).
+are combined via hybrid scoring in `recommendation` (Week 7).
 
 ## Week 6: Embeddings & Vector Search
 

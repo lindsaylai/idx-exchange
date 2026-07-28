@@ -241,7 +241,7 @@ flowchart TB
 | 4 | Conversational Agent | Session memory + follow-ups — Done |
 | 5 | Market Analytics | `california_sold` aggregation tools — Done |
 | 6 | Embeddings | Vector search over `L_Remarks` — Done |
-| 7 | Recommendations | Hybrid scoring + comp validation |
+| 7 | Recommendations | Hybrid scoring + comp validation — Done |
 | 8 | RAG | Document retrieval for MLS terminology |
 | 9 | Multi-Agent Orchestration | Intent router across all agents |
 | 10 | WhatsApp Layer | Production message formatting |
