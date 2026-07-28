@@ -1,3 +1,19 @@
+---
+name: recommendation
+description: Given an active MLS listing, surface the top similar listings (hybrid structured + semantic scoring) each with a comp-validated price assessment.
+metadata:
+  {
+    "openclaw":
+      {
+        "requires":
+          {
+            "bins": ["python3"],
+            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"],
+          },
+      },
+  }
+---
+
 # recommendation
 
 Answers "find me something like this listing" and "is this priced fairly"
