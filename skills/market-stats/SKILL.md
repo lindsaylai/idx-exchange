@@ -1,3 +1,19 @@
+---
+name: market-stats
+description: Answer California real-estate market questions (median price, DOM, price/sqft, list-to-close ratio, trends) via aggregations over california_sold.
+metadata:
+  {
+    "openclaw":
+      {
+        "requires":
+          {
+            "bins": ["python3"],
+            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"],
+          },
+      },
+  }
+---
+
 # market-stats
 
 Answers market questions ("Is now a good time to buy in San Diego?", "What's the

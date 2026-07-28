@@ -1,3 +1,19 @@
+---
+name: property-search
+description: Parse free-text real estate queries into structured filters and search active California MLS listings (rets_property), with multi-turn session refinement.
+metadata:
+  {
+    "openclaw":
+      {
+        "requires":
+          {
+            "bins": ["python3"],
+            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"],
+          },
+      },
+  }
+---
+
 # property-search
 
 Parse a free-text real estate query into structured filters, then query the MLS database.
@@ -17,8 +33,8 @@ Run `parse_query.py` to convert the user's message into a structured filter obje
 cd /Users/lindsaylai/projects/idx-exchange
 source venv/bin/activate
 python -c "
-from skills.property_search.parse_query import parse_property_query
-import json
+import sys, json; sys.path.insert(0, 'skills/property-search')
+from parse_query import parse_property_query
 result = parse_property_query('<USER_QUERY>')
 print(json.dumps(result, indent=2))
 "
