@@ -1,11 +1,15 @@
 """
 Week 6: Embeddings & Vector Search.
 
-Builds a local vector index over rets_property.L_Remarks with OpenAI's
+Builds a local vector index over rets_property listings with OpenAI's
 text-embedding-3-small, then answers free-text "find me something like..."
-queries via cosine similarity. No external vector DB -- just numpy + scikit-learn
-over a cached index file. Reuses the connection pool from the property-search
-skill rather than opening a second one.
+queries via cosine similarity. Per the handbook's build_listing_embedding()
+template, each listing embeds type/city/beds/baths/sqft/year/price alongside
+L_Remarks, not remarks alone -- so a query like "3 bed condo under $1.5M"
+can match on structured fields even when the remarks prose doesn't mention
+them. No external vector DB -- just numpy + scikit-learn over a cached index
+file. Reuses the connection pool from the property-search skill rather than
+opening a second one.
 
 Falls back to a local TF-IDF vectorizer (fit at index-build time) whenever the
 OpenAI embeddings call fails for any reason -- missing/invalid key, no quota,
@@ -62,8 +66,9 @@ def embed_texts(texts: list[str], batch_size: int = 100) -> np.ndarray:
 
 
 _LISTINGS_QUERY = """
-    SELECT L_ListingID, L_Address, L_City, L_SystemPrice,
-           L_Keyword2 AS beds, LM_Dec_3 AS baths, L_Remarks
+    SELECT L_ListingID, L_Address, L_City, L_SystemPrice, L_Type_,
+           L_Keyword2 AS beds, LM_Dec_3 AS baths, LM_Int2_3 AS sqft,
+           YearBuilt, L_Remarks
     FROM rets_property
     WHERE L_Status = 'Active'
       AND L_Remarks IS NOT NULL
@@ -71,6 +76,29 @@ _LISTINGS_QUERY = """
     ORDER BY L_ListingID
     LIMIT %s
 """
+
+
+def _listing_embedding_text(row: dict) -> str:
+    """
+    Combine structured attributes with remarks into one string per the
+    handbook's build_listing_embedding() template, so semantic search can
+    match on beds/baths/sqft/price/type even when the remarks prose doesn't
+    mention them -- not just on the free-text description.
+    """
+    parts = []
+    type_city = " ".join(p for p in (row.get("L_Type_"), f"in {row['L_City']}, CA." if row.get("L_City") else None) if p)
+    if type_city:
+        parts.append(type_city)
+    if row.get("beds") is not None and row.get("baths") is not None:
+        parts.append(f"{row['beds']} beds, {row['baths']} baths.")
+    if row.get("sqft"):
+        parts.append(f"{row['sqft']} sq ft.")
+    if row.get("YearBuilt"):
+        parts.append(f"Built {row['YearBuilt']}.")
+    if row.get("L_SystemPrice"):
+        parts.append(f"Price: ${row['L_SystemPrice']:,}.")
+    parts.append(row.get("L_Remarks") or "")
+    return " ".join(parts).strip()
 
 
 def build_index(
@@ -97,10 +125,10 @@ def build_index(
     if not rows:
         return 0
 
-    remarks = [row["L_Remarks"] for row in rows]
+    texts = [_listing_embedding_text(row) for row in rows]
     vectorizer = None
     try:
-        matrix = embed_texts(remarks)
+        matrix = embed_texts(texts)
         backend = _BACKEND_OPENAI
     except openai.OpenAIError as e:
         print(
@@ -109,7 +137,7 @@ def build_index(
             file=sys.stderr,
         )
         vectorizer = TfidfVectorizer(max_features=2000, stop_words="english")
-        matrix = vectorizer.fit_transform(remarks).toarray().astype(np.float32)
+        matrix = vectorizer.fit_transform(texts).toarray().astype(np.float32)
         backend = _BACKEND_TFIDF
 
     os.makedirs(os.path.dirname(vectors_path), exist_ok=True)
@@ -129,8 +157,11 @@ def build_index(
                 "address": row["L_Address"],
                 "city": row["L_City"],
                 "price": row["L_SystemPrice"],
+                "type": row["L_Type_"],
                 "beds": row["beds"],
                 "baths": row["baths"],
+                "sqft": row["sqft"],
+                "yearBuilt": row["YearBuilt"],
                 "remarks": row["L_Remarks"],
             }
             for row in rows
