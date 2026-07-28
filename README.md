@@ -74,6 +74,10 @@ idx-exchange/
 │       ├── SKILL.md
 │       ├── semantic_search.py    # embeddings + cosine-similarity search over L_Remarks
 │       └── test_semantic_search.py
+│   └── recommendation/
+│       ├── SKILL.md
+│       ├── recommend.py          # hybrid scoring (semantic fit + comp-relative value)
+│       └── test_recommend.py
 ├── docs/
 │   └── architecture.md       # Full system architecture + flow diagrams
 ├── data/                     # SQL dumps (gitignored)
@@ -91,7 +95,7 @@ idx-exchange/
 | 4 | Conversational Agent | Done |
 | 5 | Market Analytics | Done |
 | 6 | Embeddings & Vector Search | Done |
-| 7 | Recommendation Engine | — |
+| 7 | Recommendation Engine | Done |
 | 8 | RAG Pipeline | — |
 | 9 | Multi-Agent Orchestration | — |
 | 10 | WhatsApp Layer | — |
