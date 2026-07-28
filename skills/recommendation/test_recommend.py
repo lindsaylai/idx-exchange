@@ -3,7 +3,15 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from recommend import recommend, validate_against_comps, format_recommendation, _value_score
+from recommend import (
+    calculate_similarity_score,
+    validate_with_comps,
+    find_similar_listings,
+    format_similar_listing,
+)
+
+# A real active Sacramento listing with remarks, looked up directly for this test.
+SACRAMENTO_LISTING_ID = 1018767064
 
 
 def check(label, condition):
@@ -13,47 +21,65 @@ def check(label, condition):
 
 results = []
 
-# --- validate_against_comps ---
-comp = validate_against_comps({"city": "Sacramento", "price": 500000, "sqft": 2000})
-results.append(check("validate_against_comps returns a flag", comp["flag"] in ("underpriced", "fair", "overpriced", "no comps")))
+# --- calculate_similarity_score ---
+target = {"price": 500000, "beds": 3, "city": "Sacramento", "sqft": 1800}
+identical = {"price": 500000, "beds": 3, "city": "Sacramento", "sqft": 1800}
+distant = {"price": 900000, "beds": 5, "city": "Fresno", "sqft": 4000}
+same_emb = [1.0, 0.0, 0.0]
+diff_emb = [0.0, 1.0, 0.0]
+
+score_identical = calculate_similarity_score(target, identical, same_emb, same_emb)
+score_distant = calculate_similarity_score(target, distant, same_emb, diff_emb)
+results.append(check("identical structured attrs + identical embedding scores near 100", score_identical > 95))
+results.append(check("distant listing scores much lower", score_distant < score_identical))
+results.append(check("score is bounded in [0, 100]", 0.0 <= score_identical <= 100.0 and 0.0 <= score_distant <= 100.0))
+
+no_sqft_target = {"price": 500000, "beds": 3, "city": "Sacramento", "sqft": None}
+no_sqft_candidate = {"price": 500000, "beds": 3, "city": "Sacramento", "sqft": None}
 results.append(check(
-    "validate_against_comps returns None ratio only when flagged 'no comps'",
-    (comp["valueRatio"] is None) == (comp["flag"] == "no comps"),
+    "missing sqft on either side doesn't crash and doesn't award sqft points",
+    calculate_similarity_score(no_sqft_target, no_sqft_candidate, same_emb, same_emb) <= 90,
 ))
 
-no_comps = validate_against_comps({"city": "Nowhereville", "price": 500000, "sqft": 2000})
-results.append(check("validate_against_comps handles a city with no comps", no_comps["flag"] == "no comps"))
-results.append(check("validate_against_comps with no comps has no median", no_comps["medianPricePerSqft"] is None))
-
-# --- _value_score ---
-results.append(check("_value_score is neutral (0.5) with no comps", _value_score(None) == 0.5))
-results.append(check("_value_score rewards being priced below comps", _value_score(0.8) > _value_score(1.0)))
-results.append(check("_value_score is bounded in [0, 1]", 0.0 <= _value_score(0.2) <= 1.0 and 0.0 <= _value_score(3.0) <= 1.0))
-
-# --- recommend (hybrid scoring) ---
-hits = recommend("homes in Sacramento with a view", top_k=5, candidate_limit=25)
-results.append(check("recommend returns results", len(hits) > 0))
-results.append(check("recommend respects top_k", len(hits) <= 5))
+# --- validate_with_comps ---
+comp = validate_with_comps("Sacramento", 1800, 500000)
+results.append(check("validate_with_comps returns a flag", comp["flag"] in ("underpriced", "fair", "overpriced", "no comps")))
 results.append(check(
-    "results are sorted by descending hybrid score",
-    all(a["hybridScore"] >= b["hybridScore"] for a, b in zip(hits, hits[1:])),
+    "validate_with_comps returns None delta only when flagged 'no comps'",
+    (comp["delta_pct"] is None) == (comp["flag"] == "no comps"),
+))
+results.append(check("validate_with_comps echoes the list price back", comp["list_price"] == 500000))
+
+no_comps = validate_with_comps("Nowhereville", 1800, 500000)
+results.append(check("validate_with_comps handles a city with no comps", no_comps["flag"] == "no comps"))
+results.append(check("validate_with_comps with no comps has no comp_price", no_comps["comp_price"] == 0))
+
+# --- find_similar_listings ---
+hits = find_similar_listings(SACRAMENTO_LISTING_ID, top_k=5, candidate_limit=25)
+results.append(check("find_similar_listings returns results", len(hits) > 0))
+results.append(check("find_similar_listings respects top_k", len(hits) <= 5))
+results.append(check(
+    "results are sorted by descending similarity score",
+    all(a["similarityScore"] >= b["similarityScore"] for a, b in zip(hits, hits[1:])),
 ))
 results.append(check(
     "each hit has the expected fields",
-    all(
-        "listingId" in hit and "semanticScore" in hit and "valueScore" in hit
-        and "hybridScore" in hit and "comp" in hit
-        for hit in hits
-    ),
+    all("listingId" in hit and "similarityScore" in hit and "comp" in hit for hit in hits),
 ))
-results.append(check("hybrid scores are bounded in [0, 1]", all(-0.0001 <= hit["hybridScore"] <= 1.0001 for hit in hits)))
+results.append(check(
+    "the target listing itself is never returned as a match",
+    all(hit["listingId"] != SACRAMENTO_LISTING_ID for hit in hits),
+))
 
-empty = recommend("homes in Nowhereville", top_k=5, candidate_limit=25)
-results.append(check("recommend returns no results for an unmatched query", empty == []))
+try:
+    find_similar_listings(999999999999, top_k=5)
+    results.append(check("find_similar_listings raises for an unknown listing id", False))
+except ValueError:
+    results.append(check("find_similar_listings raises for an unknown listing id", True))
 
 # --- formatted card ---
-card = format_recommendation(hits[0])
+card = format_similar_listing(hits[0])
 results.append(check("formatted card includes the address", hits[0]["address"] in card))
-results.append(check("formatted card includes the hybrid score", "hybrid score)" in card))
+results.append(check("formatted card includes the similarity score", "similarity)" in card))
 
 print(f"\n{sum(results)}/{len(results)} tests passed")
