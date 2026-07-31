@@ -29,8 +29,8 @@ document for the full column reference.
 - **semantic-search** — Answers fuzzy, descriptive property queries that
   don't map to hard filters (a feel, vibe, or set of qualities rather than
   specific numbers), by embedding listing remarks and structured
-  attributes with Gemini's `gemini-embedding-001` and ranking by cosine
-  similarity.
+  attributes with a local `sentence-transformers` model and ranking by
+  cosine similarity.
 
 - **recommendation** — Given a specific active listing, surfaces the top 5
   most similar other active listings (hybrid score: 60% structured
@@ -51,10 +51,12 @@ document for the full column reference.
   guardrails.
 - All SQL is parameterized — no user input is ever string-concatenated
   into a query.
-- Embeddings-dependent skills (`semantic-search`, `recommendation`,
-  `rag-knowledge`) fall back to a local TF-IDF vectorizer whenever the
-  Gemini embeddings API is unavailable (free-tier quota, key, network), so
-  they stay usable offline or without any paid API dependency at all.
+- Embeddings across all skills run on a local `sentence-transformers`
+  model — no API, no key, no rate limit, no cost — falling back further to
+  a local TF-IDF vectorizer in the rare case the model itself can't load
+  (no cached weights and no network on a first-ever run). `rag-knowledge`
+  is the only skill with a hosted API dependency at all, for its answer
+  generation step (Gemini).
 - As of Week 8, skills run as plain Python modules invoked directly (see
   each skill's `SKILL.md` for a runnable example) — OpenClaw agent
   orchestration, intent routing, and the WhatsApp channel are Week 9+

@@ -9,16 +9,17 @@ grounding an answer in that retrieved context, instead of answering from the
 model's own (unverified) knowledge.
 
 Same index-to-disk / embed-with-fallback shape as semantic-search's listing
-index: chunks are embedded with Gemini's gemini-embedding-001, falling back
-to a local TF-IDF vectorizer if that call fails for any reason.
+index: chunks are embedded with a local sentence-transformers model
+(all-MiniLM-L6-v2), falling back to a local TF-IDF vectorizer if that
+fails for any reason.
 
-Answer generation also uses Gemini (`gemini-2.5-flash`) -- it's the LLM
-this project's architecture already designates for orchestration (see
-docs/architecture.md), and it has a free tier, so both the embedding and
-generation calls in this skill run on the same provider rather than a
-second paid one. Same degrade-gracefully principle as everywhere else: if
-the Gemini call fails for any reason, fall back to returning the top
-retrieved chunk verbatim (clearly labeled) rather than failing outright.
+Answer generation uses Gemini (`gemini-2.5-flash`) -- it's the LLM this
+project's architecture already designates for orchestration (see
+docs/architecture.md), and it has a free tier, so this skill's one hosted
+API dependency is on a free provider. Same degrade-gracefully principle as
+everywhere else: if the Gemini call fails for any reason, fall back to
+returning the top retrieved chunk verbatim (clearly labeled) rather than
+failing outright.
 """
 
 import json
@@ -45,6 +46,7 @@ _load_dotenv(_ENV_PATH)
 
 _GEMINI_MODEL = "gemini-2.5-flash"
 _BACKEND_TFIDF = "tfidf"
+_BACKEND_LOCAL = "sentence-transformers"
 _BACKEND_GEMINI = "gemini"
 _BACKEND_EXTRACTIVE = "extractive"
 
@@ -192,10 +194,10 @@ def build_index(
     vectorizer = None
     try:
         matrix = embed_texts(texts)
-        backend = _BACKEND_GEMINI
-    except genai_errors.APIError as e:
+        backend = _BACKEND_LOCAL
+    except Exception as e:
         print(
-            f"Gemini embeddings unavailable ({e.__class__.__name__}: {str(e)[:200]}); "
+            f"Local embedding model unavailable ({e.__class__.__name__}: {str(e)[:200]}); "
             "falling back to a local TF-IDF index for RAG retrieval.",
             file=sys.stderr,
         )
@@ -247,15 +249,16 @@ def retrieve(
     else:
         try:
             query_vector = embed_texts([query])
-        except genai_errors.APIError as e:
-            # This index's cached matrix is in Gemini's vector space -- a TF-IDF
-            # query vector wouldn't be comparable to it, so there's no
-            # same-space fallback to degrade to here (unlike build_index()).
+        except Exception as e:
+            # This index's cached matrix is in the local model's vector space
+            # -- a TF-IDF query vector wouldn't be comparable to it, so
+            # there's no same-space fallback to degrade to here (unlike
+            # build_index()).
             raise RuntimeError(
-                "This index was built with live Gemini embeddings, but embedding "
-                f"the query failed ({e.__class__.__name__}: {str(e)[:200]}). Retry "
-                "once the API is available again, or run build_index() again to "
-                "force the TF-IDF backend for both the corpus and future queries."
+                "This index was built with the local embedding model, but "
+                f"embedding the query failed ({e.__class__.__name__}: "
+                f"{str(e)[:200]}). Run build_index() again to force the "
+                "TF-IDF backend for both the corpus and future queries."
             ) from e
 
     scores = cosine_similarity(query_vector, matrix)[0]
