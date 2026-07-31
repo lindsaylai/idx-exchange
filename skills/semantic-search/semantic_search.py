@@ -1,21 +1,26 @@
 """
 Week 6: Embeddings & Vector Search.
 
-Builds a local vector index over rets_property listings with Gemini's
-gemini-embedding-001, then answers free-text "find me something like..."
-queries via cosine similarity. Per the handbook's build_listing_embedding()
-template, each listing embeds type/city/beds/baths/sqft/year/price alongside
-L_Remarks, not remarks alone -- so a query like "3 bed condo under $1.5M"
-can match on structured fields even when the remarks prose doesn't mention
-them. No external vector DB -- just numpy + scikit-learn over a cached index
-file. Reuses the connection pool from the property-search skill rather than
-opening a second one.
+Builds a local vector index over rets_property listings with a local
+sentence-transformers model (all-MiniLM-L6-v2), then answers free-text
+"find me something like..." queries via cosine similarity. Per the
+handbook's build_listing_embedding() template, each listing embeds
+type/city/beds/baths/sqft/year/price alongside L_Remarks, not remarks
+alone -- so a query like "3 bed condo under $1.5M" can match on structured
+fields even when the remarks prose doesn't mention them. No external
+vector DB -- just numpy + scikit-learn over a cached index file. Reuses
+the connection pool from the property-search skill rather than opening a
+second one.
 
-Falls back to a local TF-IDF vectorizer (fit at index-build time) whenever the
-Gemini embeddings call fails for any reason -- missing/invalid key, no quota,
-no network -- so the pipeline stays testable and usable offline. The index
-cache records which backend produced it so a query embeds with the matching
-one.
+Embeddings run locally (no API, no key, no rate limit, no cost) rather
+than through a hosted provider -- both OpenAI and Gemini were tried here
+first, and both mean either billing or a free-tier quota that's easy to
+trip under the bursty, batch-heavy traffic this skill and its dependents
+(recommendation, rag-knowledge) generate. Falls back to a local TF-IDF
+vectorizer if the model can't be loaded for any reason (no cached weights
+and no network on first run, disk issue) -- same graceful-degradation
+shape as before, just a much rarer failure mode now. The index cache
+records which backend produced it so a query embeds with the matching one.
 """
 
 import json
@@ -27,8 +32,7 @@ from decimal import Decimal
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "property-search"))
 
 import numpy as np
-from google import genai
-from google.genai import errors as genai_errors
+from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -36,8 +40,8 @@ from db import get_cursor, _load_dotenv, _ENV_PATH
 
 _load_dotenv(_ENV_PATH)
 
-_EMBEDDING_MODEL = "gemini-embedding-001"
-_BACKEND_GEMINI = "gemini"
+_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+_BACKEND_LOCAL = "sentence-transformers"
 _BACKEND_TFIDF = "tfidf"
 
 _INDEX_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
@@ -45,24 +49,25 @@ _VECTORS_PATH = os.path.join(_INDEX_DIR, "listing_embeddings.npy")
 _META_PATH = os.path.join(_INDEX_DIR, "listing_embeddings_meta.json")
 _VECTORIZER_PATH = os.path.join(_INDEX_DIR, "listing_embeddings_vectorizer.pkl")
 
-_CLIENT = None
+_MODEL = None
 
 
-def _get_client() -> genai.Client:
-    global _CLIENT
-    if _CLIENT is None:
-        _CLIENT = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-    return _CLIENT
+def _get_model() -> SentenceTransformer:
+    """
+    Lazily load (and cache) the local embedding model. First call downloads
+    the ~90MB model from the HuggingFace Hub and caches it under
+    ~/.cache/huggingface/ -- see the README's setup step for prefetching
+    this once up front instead of on first real use.
+    """
+    global _MODEL
+    if _MODEL is None:
+        _MODEL = SentenceTransformer(_EMBEDDING_MODEL)
+    return _MODEL
 
 
 def embed_texts(texts: list[str], batch_size: int = 100) -> np.ndarray:
-    """Embed a list of texts with gemini-embedding-001, chunked into batches."""
-    vectors = []
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
-        response = _get_client().models.embed_content(model=_EMBEDDING_MODEL, contents=batch)
-        vectors.extend(item.values for item in response.embeddings)
-    return np.array(vectors, dtype=np.float32)
+    """Embed a list of texts locally with all-MiniLM-L6-v2, batched for memory."""
+    return _get_model().encode(texts, batch_size=batch_size, convert_to_numpy=True).astype(np.float32)
 
 
 _LISTINGS_QUERY = """
@@ -113,10 +118,11 @@ def build_index(
     ~53K active listings) to keep embedding cost/time bounded for local dev --
     re-run with a larger limit for a fuller index. Returns the row count indexed.
 
-    Tries Gemini embeddings first; if that call fails for any reason (no
-    quota, bad/missing key, no network), falls back to a TF-IDF vectorizer
-    fit on this batch of remarks, and persists the fitted vectorizer so
-    semantic_search() can embed queries the same way.
+    Tries the local sentence-transformers model first; if that fails for
+    any reason (no cached weights and no network on a first-ever run, out
+    of disk/memory), falls back to a TF-IDF vectorizer fit on this batch of
+    remarks, and persists the fitted vectorizer so semantic_search() can
+    embed queries the same way.
     """
     with get_cursor() as cursor:
         cursor.execute(_LISTINGS_QUERY, (limit,))
@@ -129,10 +135,14 @@ def build_index(
     vectorizer = None
     try:
         matrix = embed_texts(texts)
-        backend = _BACKEND_GEMINI
-    except genai_errors.APIError as e:
+        backend = _BACKEND_LOCAL
+    except Exception as e:
+        # Broad catch deliberately: unlike a hosted API's well-typed error
+        # class, a local model can fail in whatever way huggingface_hub /
+        # torch / the filesystem fails (network error, corrupt cache, OOM)
+        # -- graceful degradation here matters more than being narrow.
         print(
-            f"Gemini embeddings unavailable ({e.__class__.__name__}: {str(e)[:200]}); "
+            f"Local embedding model unavailable ({e.__class__.__name__}: {str(e)[:200]}); "
             "falling back to a local TF-IDF index.",
             file=sys.stderr,
         )
@@ -204,15 +214,17 @@ def semantic_search(
     else:
         try:
             query_vector = embed_texts([query])
-        except genai_errors.APIError as e:
-            # This index's cached matrix is in Gemini's vector space -- a TF-IDF
-            # query vector wouldn't be comparable to it, so there's no
-            # same-space fallback to degrade to here (unlike build_index()).
+        except Exception as e:
+            # This index's cached matrix is in the local model's vector space
+            # -- a TF-IDF query vector wouldn't be comparable to it, so
+            # there's no same-space fallback to degrade to here (unlike
+            # build_index()). Much rarer now than with a hosted API, but
+            # still possible (model cache corrupted/evicted after build).
             raise RuntimeError(
-                "This index was built with live Gemini embeddings, but embedding "
-                f"the query failed ({e.__class__.__name__}: {str(e)[:200]}). Retry "
-                "once the API is available again, or run build_index() again to "
-                "force the TF-IDF backend for both the corpus and future queries."
+                "This index was built with the local embedding model, but "
+                f"embedding the query failed ({e.__class__.__name__}: "
+                f"{str(e)[:200]}). Run build_index() again to force the "
+                "TF-IDF backend for both the corpus and future queries."
             ) from e
 
     scores = cosine_similarity(query_vector, matrix)[0]
