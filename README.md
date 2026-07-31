@@ -19,7 +19,7 @@ git clone https://github.com/lindsaylai/idx-exchange.git
 cd idx-exchange
 python3 -m venv venv
 source venv/bin/activate
-pip install pandas openai google-genai mysql-connector-python sqlalchemy scikit-learn numpy
+pip install pandas google-genai mysql-connector-python sqlalchemy scikit-learn numpy
 ```
 
 **2. Configure environment variables**
@@ -28,7 +28,6 @@ cp .env.example .env  # then fill in your values
 ```
 
 ```env
-OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
 MYSQL_HOST=localhost
 MYSQL_USER=root
@@ -112,8 +111,9 @@ idx-exchange/
 
 - **Database:** MySQL
 - **Language:** Python 3.11
-- **Embeddings:** OpenAI `text-embedding-3-small` (TF-IDF fallback if the API is unreachable)
+- **Embeddings:** Google Gemini `gemini-embedding-001` (free tier; TF-IDF fallback if the API is unreachable) — used by `semantic-search`, `recommendation`, and `rag-knowledge`.
 - **RAG answer generation:** Google Gemini `gemini-2.5-flash` (Week 8, `rag-knowledge`) — free tier, and the same LLM already designated for OpenClaw orchestration; falls back to returning the top retrieved chunk verbatim if unavailable.
+- No OpenAI dependency — deliberately avoided to keep the whole stack on free-tier APIs; Gemini's free tier has its own (separate, per-endpoint) rate limits, so the TF-IDF/extractive fallbacks above are real, regularly-exercised code paths, not just theoretical ones.
 
 **Planned (Week 9+, not yet implemented):** OpenClaw agent runtime as the
 orchestrator, WhatsApp as the delivery channel. Weeks 0–8 run as plain

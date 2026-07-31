@@ -9,16 +9,16 @@ grounding an answer in that retrieved context, instead of answering from the
 model's own (unverified) knowledge.
 
 Same index-to-disk / embed-with-fallback shape as semantic-search's listing
-index: chunks are embedded with OpenAI's text-embedding-3-small, falling
-back to a local TF-IDF vectorizer if that call fails for any reason.
+index: chunks are embedded with Gemini's gemini-embedding-001, falling back
+to a local TF-IDF vectorizer if that call fails for any reason.
 
-Answer generation uses Gemini (`gemini-2.5-flash`), not OpenAI -- it's the
-LLM this project's architecture already designates for orchestration (see
-docs/architecture.md), it has a free tier, and using it here avoids a
-second paid dependency on top of the embeddings model. Same
-degrade-gracefully principle as everywhere else: if the Gemini call fails
-for any reason, fall back to returning the top retrieved chunk verbatim
-(clearly labeled) rather than failing outright.
+Answer generation also uses Gemini (`gemini-2.5-flash`) -- it's the LLM
+this project's architecture already designates for orchestration (see
+docs/architecture.md), and it has a free tier, so both the embedding and
+generation calls in this skill run on the same provider rather than a
+second paid one. Same degrade-gracefully principle as everywhere else: if
+the Gemini call fails for any reason, fall back to returning the top
+retrieved chunk verbatim (clearly labeled) rather than failing outright.
 """
 
 import json
@@ -32,7 +32,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "semantic-searc
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "market-stats"))
 
 import numpy as np
-import openai
 from google import genai
 from google.genai import errors as genai_errors
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -45,7 +44,6 @@ from market_stats import format_market_summary
 _load_dotenv(_ENV_PATH)
 
 _GEMINI_MODEL = "gemini-2.5-flash"
-_BACKEND_OPENAI = "openai"
 _BACKEND_TFIDF = "tfidf"
 _BACKEND_GEMINI = "gemini"
 _BACKEND_EXTRACTIVE = "extractive"
@@ -194,10 +192,10 @@ def build_index(
     vectorizer = None
     try:
         matrix = embed_texts(texts)
-        backend = _BACKEND_OPENAI
-    except openai.OpenAIError as e:
+        backend = _BACKEND_GEMINI
+    except genai_errors.APIError as e:
         print(
-            f"OpenAI embeddings unavailable ({e.__class__.__name__}); "
+            f"Gemini embeddings unavailable ({e.__class__.__name__}: {str(e)[:200]}); "
             "falling back to a local TF-IDF index for RAG retrieval.",
             file=sys.stderr,
         )
@@ -247,7 +245,18 @@ def retrieve(
     if backend == _BACKEND_TFIDF:
         query_vector = vectorizer.transform([query]).toarray().astype(np.float32)
     else:
-        query_vector = embed_texts([query])
+        try:
+            query_vector = embed_texts([query])
+        except genai_errors.APIError as e:
+            # This index's cached matrix is in Gemini's vector space -- a TF-IDF
+            # query vector wouldn't be comparable to it, so there's no
+            # same-space fallback to degrade to here (unlike build_index()).
+            raise RuntimeError(
+                "This index was built with live Gemini embeddings, but embedding "
+                f"the query failed ({e.__class__.__name__}: {str(e)[:200]}). Retry "
+                "once the API is available again, or run build_index() again to "
+                "force the TF-IDF backend for both the corpus and future queries."
+            ) from e
 
     scores = cosine_similarity(query_vector, matrix)[0]
     top_indices = np.argsort(scores)[::-1][:top_k]
