@@ -78,7 +78,7 @@ Modular capability units — each skill teaches the agent how to handle a class 
 | `market-stats` | 5 | Aggregations over `california_sold` |
 | `semantic-search` | 6 | Embedding-based similarity search over `L_Remarks` |
 | `recommendation` | 7 | Similar listings + comp validation |
-| `rag-knowledge` | 8 | MLS field definitions & RE terminology |
+| `rag-knowledge` | 8 | MLS field definitions & RE terminology — Done |
 | `orchestrator` | 9 | Route mixed-intent queries to agents |
 
 Skills live as `SKILL.md` files (plus optional scripts) in the workspace or project repo.
@@ -102,6 +102,9 @@ Examples in this project:
 - `getSoldComps(city, months)` — SQL on `california_sold` (Week 3)
 - `semantic_search(query)` — embeds `query` and ranks listings by cosine
   similarity over a cached `L_Remarks` vector index (Week 6)
+- `rag_answer(query)` — retrieves the top matching chunks from a cached
+  index over `docs/knowledge/` (+ optional live market reports) and
+  generates an answer grounded in them (Week 8)
 
 Tools must use **parameterized queries** (`?` placeholders) — never string-concatenate user input into SQL.
 
@@ -110,7 +113,7 @@ Tools must use **parameterized queries** (`?` placeholders) — never string-con
 Two layers:
 
 - **Short-term (session):** in-memory map keyed by user ID; holds active search filters and last result set.
-- **Long-term:** a cached `numpy` vector index over listing remarks (Week 6, `semantic-search`), and later RAG document chunks.
+- **Long-term:** a cached `numpy` vector index over listing remarks (Week 6, `semantic-search`), and a second cached vector index over RAG document chunks (Week 8, `rag-knowledge`).
 
 Session memory is updated after each turn so follow-up messages like “make it under $1.2M” merge into the existing search.
 
@@ -242,7 +245,7 @@ flowchart TB
 | 5 | Market Analytics | `california_sold` aggregation tools — Done |
 | 6 | Embeddings | Vector search over `L_Remarks` — Done |
 | 7 | Recommendations | Hybrid scoring + comp validation — Done |
-| 8 | RAG | Document retrieval for MLS terminology |
+| 8 | RAG | Document retrieval for MLS terminology — Done |
 | 9 | Multi-Agent Orchestration | Intent router across all agents |
 | 10 | WhatsApp Layer | Production message formatting |
 | 11 | Email + Safety | Draft-then-approve email workflows |

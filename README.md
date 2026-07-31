@@ -19,7 +19,7 @@ git clone https://github.com/lindsaylai/idx-exchange.git
 cd idx-exchange
 python3 -m venv venv
 source venv/bin/activate
-pip install pandas openai mysql-connector-python sqlalchemy scikit-learn numpy
+pip install pandas openai google-genai mysql-connector-python sqlalchemy scikit-learn numpy
 ```
 
 **2. Configure environment variables**
@@ -29,6 +29,7 @@ cp .env.example .env  # then fill in your values
 
 ```env
 OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
 MYSQL_HOST=localhost
 MYSQL_USER=root
 MYSQL_PASSWORD=
@@ -78,7 +79,12 @@ idx-exchange/
 │       ├── SKILL.md
 │       ├── recommend.py          # hybrid scoring (semantic fit + comp-relative value)
 │       └── test_recommend.py
+│   └── rag-knowledge/
+│       ├── SKILL.md
+│       ├── rag.py                # chunk/index/retrieve + grounded answer generation
+│       └── test_rag.py
 ├── docs/
+│   └── knowledge/             # RAG source docs: field defs, glossary, CA disclosures, internal docs
 │   └── architecture.md       # Full system architecture + flow diagrams
 ├── data/                     # SQL dumps (gitignored)
 └── venv/                     # Python environment (gitignored)
@@ -96,7 +102,7 @@ idx-exchange/
 | 5 | Market Analytics | Done |
 | 6 | Embeddings & Vector Search | Done |
 | 7 | Recommendation Engine | Done |
-| 8 | RAG Pipeline | — |
+| 8 | RAG Pipeline | Done |
 | 9 | Multi-Agent Orchestration | — |
 | 10 | WhatsApp Layer | — |
 | 11 | Email Agents & Safety | — |
@@ -107,9 +113,10 @@ idx-exchange/
 - **Database:** MySQL
 - **Language:** Python 3.11
 - **Embeddings:** OpenAI `text-embedding-3-small` (TF-IDF fallback if the API is unreachable)
+- **RAG answer generation:** Google Gemini `gemini-2.5-flash` (Week 8, `rag-knowledge`) — free tier, and the same LLM already designated for OpenClaw orchestration; falls back to returning the top retrieved chunk verbatim if unavailable.
 
-**Planned (Week 9+, not yet implemented):** OpenClaw agent runtime, Gemini as
-the orchestrating LLM, WhatsApp as the delivery channel. Weeks 0–7 run as
-plain Python skills invoked directly (see `chat.py`) — there's no LLM-driven
+**Planned (Week 9+, not yet implemented):** OpenClaw agent runtime as the
+orchestrator, WhatsApp as the delivery channel. Weeks 0–8 run as plain
+Python skills invoked directly (see `chat.py`) — there's no LLM-driven
 intent routing or tool-calling loop yet, and no OpenClaw/WhatsApp wiring in
 this repo.
