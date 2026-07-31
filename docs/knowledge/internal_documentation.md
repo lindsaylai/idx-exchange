@@ -29,7 +29,7 @@ document for the full column reference.
 - **semantic-search** — Answers fuzzy, descriptive property queries that
   don't map to hard filters (a feel, vibe, or set of qualities rather than
   specific numbers), by embedding listing remarks and structured
-  attributes with OpenAI's `text-embedding-3-small` and ranking by cosine
+  attributes with Gemini's `gemini-embedding-001` and ranking by cosine
   similarity.
 
 - **recommendation** — Given a specific active listing, surfaces the top 5
@@ -53,8 +53,8 @@ document for the full column reference.
   into a query.
 - Embeddings-dependent skills (`semantic-search`, `recommendation`,
   `rag-knowledge`) fall back to a local TF-IDF vectorizer whenever the
-  OpenAI embeddings API is unavailable (quota, key, network), so they stay
-  usable offline or without billing configured.
+  Gemini embeddings API is unavailable (free-tier quota, key, network), so
+  they stay usable offline or without any paid API dependency at all.
 - As of Week 8, skills run as plain Python modules invoked directly (see
   each skill's `SKILL.md` for a runnable example) — OpenClaw agent
   orchestration, intent routing, and the WhatsApp channel are Week 9+

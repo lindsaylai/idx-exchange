@@ -1,6 +1,6 @@
 ---
 name: semantic-search
-description: Semantic similarity search over active MLS listings via OpenAI embeddings (TF-IDF fallback) for fuzzy, descriptive property queries beyond structured filters.
+description: Semantic similarity search over active MLS listings via Gemini embeddings (TF-IDF fallback) for fuzzy, descriptive property queries beyond structured filters.
 metadata:
   {
     "openclaw":
@@ -8,7 +8,7 @@ metadata:
         "requires":
           {
             "bins": ["python3"],
-            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"],
+            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE", "GEMINI_API_KEY"],
           },
       },
   }
@@ -52,8 +52,8 @@ for hit in semantic_search('cozy mountain cabin with a view', top_k=5):
 
 ### Functions
 
-- `embed_texts(texts, batch_size)` — embeds a list of strings with OpenAI
-  `text-embedding-3-small`, chunked into batches of `batch_size`.
+- `embed_texts(texts, batch_size)` — embeds a list of strings with Gemini's
+  `gemini-embedding-001`, chunked into batches of `batch_size`.
 - `build_index(limit, vectors_path, meta_path)` — pulls `limit` active
   listings with non-empty `L_Remarks`, embeds a combined
   type/city/beds/baths/sqft/year/price/remarks string per listing (see
@@ -79,22 +79,28 @@ for hit in semantic_search('cozy mountain cabin with a view', top_k=5):
 - Reuses the connection pool from `property-search/db.py` rather than opening
   a second one — `semantic_search.py` adds `../property-search` to
   `sys.path` itself, same pattern as `market-stats`.
-- Embeddings use `text-embedding-3-small` per the project's tech stack; the
-  OpenAI client reads `OPENAI_API_KEY` from `.env` via the same
-  `_load_dotenv()` helper `db.py` and `market_stats.py` use.
-- **TF-IDF fallback:** if the OpenAI embeddings call fails for any reason
-  (the dev account currently has `insufficient_quota` — 429 — but this also
-  covers a missing key or no network), `build_index()` catches
-  `openai.OpenAIError`, fits a `scikit-learn` `TfidfVectorizer` on the same
-  batch of remarks instead, and persists the fitted vectorizer
+- Embeddings use `gemini-embedding-001` (free tier) rather than OpenAI, per
+  a deliberate choice to avoid a paid dependency; the Gemini client reads
+  `GEMINI_API_KEY` from `.env` via the same `_load_dotenv()` helper `db.py`
+  and `market_stats.py` use.
+- **TF-IDF fallback:** if the Gemini embeddings call fails for any reason
+  (free-tier quota — a real, easy-to-hit limit, not just a theoretical
+  one — missing key, or no network), `build_index()` catches
+  `genai_errors.APIError`, fits a `scikit-learn` `TfidfVectorizer` on the
+  same batch of remarks instead, and persists the fitted vectorizer
   (`listing_embeddings_vectorizer.pkl`) next to the cache. `meta.json`
-  records which backend (`"openai"` or `"tfidf"`) produced the index, so
-  `semantic_search()` embeds the query the same way. Once billing/quota is
-  fixed, delete the `data/listing_embeddings*` cache files and re-run
-  `build_index()` to pick OpenAI embeddings back up automatically — no code
-  changes needed.
+  records which backend (`"gemini"` or `"tfidf"`) produced the index, so
+  `semantic_search()` embeds the query the same way.
+- **`semantic_search()` can also hit the same quota wall** on a *query*,
+  even when the index itself built successfully with Gemini — that's a
+  different failure mode than `build_index()`'s, since a TF-IDF query
+  vector isn't comparable to a Gemini-embedded corpus matrix (different
+  vector space entirely). Rather than silently producing a meaningless
+  comparison, `semantic_search()` raises a clear `RuntimeError` in this
+  case — retry once quota resets, or re-run `build_index()` to force the
+  TF-IDF backend for both the corpus and future queries.
 
 Tests: `python skills/semantic-search/test_semantic_search.py` (builds a
 small 30-listing index in a temp directory; runs against MySQL and — quota
-permitting — the live OpenAI API, otherwise the TF-IDF fallback kicks in
+permitting — the live Gemini API, otherwise the TF-IDF fallback kicks in
 automatically).
