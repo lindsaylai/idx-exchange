@@ -22,14 +22,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "property-searc
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "semantic-search"))
 
 import numpy as np
-from google.genai import errors as genai_errors
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 from db import get_cursor
 from semantic_search import embed_texts
 
-_BACKEND_GEMINI = "gemini"
+_BACKEND_LOCAL = "sentence-transformers"
 _BACKEND_TFIDF = "tfidf"
 
 _LISTING_COLUMNS = """
@@ -80,19 +79,20 @@ def _get_candidate_listings(target: dict, limit: int) -> list[dict]:
 def _embed_batch(target_text: str, candidate_texts: list[str]):
     """
     Embed the target's remarks + each candidate's remarks together so they
-    land in the same vector space. Tries Gemini first; on any Gemini error
-    (quota, key, network) falls back to a TF-IDF vectorizer fit fresh on
-    this batch -- same graceful-degradation pattern as
+    land in the same vector space. Tries the local embedding model first;
+    on any failure (rare -- missing cached weights, no network on a
+    first-ever run) falls back to a TF-IDF vectorizer fit fresh on this
+    batch -- same graceful-degradation pattern as
     semantic_search.build_index(), but scoped per-call since the candidate
     set here is query-dependent rather than a static cached index.
     """
     texts = [target_text] + candidate_texts
     try:
         vectors = embed_texts(texts)
-        backend = _BACKEND_GEMINI
-    except genai_errors.APIError as e:
+        backend = _BACKEND_LOCAL
+    except Exception as e:
         print(
-            f"Gemini embeddings unavailable ({e.__class__.__name__}: {str(e)[:200]}); "
+            f"Local embedding model unavailable ({e.__class__.__name__}: {str(e)[:200]}); "
             "falling back to a local TF-IDF index for recommendation scoring.",
             file=sys.stderr,
         )

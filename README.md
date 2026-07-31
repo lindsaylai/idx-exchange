@@ -19,10 +19,16 @@ git clone https://github.com/lindsaylai/idx-exchange.git
 cd idx-exchange
 python3 -m venv venv
 source venv/bin/activate
-pip install pandas google-genai mysql-connector-python sqlalchemy scikit-learn numpy
+pip install pandas sentence-transformers google-genai mysql-connector-python sqlalchemy scikit-learn numpy
 ```
 
-**2. Configure environment variables**
+**2. Prefetch the local embedding model**
+```bash
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+```
+One-time ~90MB download from the HuggingFace Hub, cached under `~/.cache/huggingface/`. Doing this explicitly up front makes setup reproducible — without it, the model just downloads lazily on first real use instead (in `semantic-search`, `recommendation`, or `rag-knowledge`), which works fine too, just less predictably.
+
+**3. Configure environment variables**
 ```bash
 cp .env.example .env  # then fill in your values
 ```
@@ -36,15 +42,16 @@ MYSQL_DATABASE=idx_exchange
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASSWORD=your_app_password
 ```
+`GEMINI_API_KEY` is only needed for `rag-knowledge`'s answer generation (`gemini-2.5-flash`) — embeddings across all skills run locally and need no API key at all.
 
-**3. Import MLS data**
+**4. Import MLS data**
 ```bash
 mysql -u root -e "CREATE DATABASE idx_exchange CHARACTER SET utf8mb4;"
 mysql -u root idx_exchange < data/rets_property.sql
 mysql -u root idx_exchange < data/california_sold.sql
 ```
 
-**4. Install and configure OpenClaw**
+**5. Install and configure OpenClaw**
 ```bash
 npm install -g openclaw
 openclaw onboard
@@ -111,9 +118,9 @@ idx-exchange/
 
 - **Database:** MySQL
 - **Language:** Python 3.11
-- **Embeddings:** Google Gemini `gemini-embedding-001` (free tier; TF-IDF fallback if the API is unreachable) — used by `semantic-search`, `recommendation`, and `rag-knowledge`.
+- **Embeddings:** local `sentence-transformers` (`all-MiniLM-L6-v2`) — used by `semantic-search`, `recommendation`, and `rag-knowledge`. No API, no key, no rate limit, no cost; TF-IDF fallback if the model can't load at all (rare — first-run-only network dependency).
 - **RAG answer generation:** Google Gemini `gemini-2.5-flash` (Week 8, `rag-knowledge`) — free tier, and the same LLM already designated for OpenClaw orchestration; falls back to returning the top retrieved chunk verbatim if unavailable.
-- No OpenAI dependency — deliberately avoided to keep the whole stack on free-tier APIs; Gemini's free tier has its own (separate, per-endpoint) rate limits, so the TF-IDF/extractive fallbacks above are real, regularly-exercised code paths, not just theoretical ones.
+- No OpenAI dependency, and no hosted embeddings dependency either — both were tried (see git history) and dropped in favor of the fully local embedding model above, since embeddings happen in bursts (indexing hundreds of listings/chunks at once) that reliably tripped free-tier per-minute quotas on both OpenAI and Gemini. Gemini is still used for `rag-knowledge`'s generation step, where traffic is much lighter (one call per question).
 
 **Planned (Week 9+, not yet implemented):** OpenClaw agent runtime as the
 orchestrator, WhatsApp as the delivery channel. Weeks 0–8 run as plain
