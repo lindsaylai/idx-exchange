@@ -1,8 +1,8 @@
 """
 Week 6: Embeddings & Vector Search.
 
-Builds a local vector index over rets_property listings with OpenAI's
-text-embedding-3-small, then answers free-text "find me something like..."
+Builds a local vector index over rets_property listings with Gemini's
+gemini-embedding-001, then answers free-text "find me something like..."
 queries via cosine similarity. Per the handbook's build_listing_embedding()
 template, each listing embeds type/city/beds/baths/sqft/year/price alongside
 L_Remarks, not remarks alone -- so a query like "3 bed condo under $1.5M"
@@ -12,7 +12,7 @@ file. Reuses the connection pool from the property-search skill rather than
 opening a second one.
 
 Falls back to a local TF-IDF vectorizer (fit at index-build time) whenever the
-OpenAI embeddings call fails for any reason -- missing/invalid key, no quota,
+Gemini embeddings call fails for any reason -- missing/invalid key, no quota,
 no network -- so the pipeline stays testable and usable offline. The index
 cache records which backend produced it so a query embeds with the matching
 one.
@@ -27,8 +27,8 @@ from decimal import Decimal
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "property-search"))
 
 import numpy as np
-import openai
-from openai import OpenAI
+from google import genai
+from google.genai import errors as genai_errors
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -36,8 +36,8 @@ from db import get_cursor, _load_dotenv, _ENV_PATH
 
 _load_dotenv(_ENV_PATH)
 
-_EMBEDDING_MODEL = "text-embedding-3-small"
-_BACKEND_OPENAI = "openai"
+_EMBEDDING_MODEL = "gemini-embedding-001"
+_BACKEND_GEMINI = "gemini"
 _BACKEND_TFIDF = "tfidf"
 
 _INDEX_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
@@ -48,20 +48,20 @@ _VECTORIZER_PATH = os.path.join(_INDEX_DIR, "listing_embeddings_vectorizer.pkl")
 _CLIENT = None
 
 
-def _get_client() -> OpenAI:
+def _get_client() -> genai.Client:
     global _CLIENT
     if _CLIENT is None:
-        _CLIENT = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        _CLIENT = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     return _CLIENT
 
 
 def embed_texts(texts: list[str], batch_size: int = 100) -> np.ndarray:
-    """Embed a list of texts with text-embedding-3-small, chunked into batches."""
+    """Embed a list of texts with gemini-embedding-001, chunked into batches."""
     vectors = []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
-        response = _get_client().embeddings.create(model=_EMBEDDING_MODEL, input=batch)
-        vectors.extend(item.embedding for item in response.data)
+        response = _get_client().models.embed_content(model=_EMBEDDING_MODEL, contents=batch)
+        vectors.extend(item.values for item in response.embeddings)
     return np.array(vectors, dtype=np.float32)
 
 
@@ -113,7 +113,7 @@ def build_index(
     ~53K active listings) to keep embedding cost/time bounded for local dev --
     re-run with a larger limit for a fuller index. Returns the row count indexed.
 
-    Tries OpenAI embeddings first; if that call fails for any reason (no
+    Tries Gemini embeddings first; if that call fails for any reason (no
     quota, bad/missing key, no network), falls back to a TF-IDF vectorizer
     fit on this batch of remarks, and persists the fitted vectorizer so
     semantic_search() can embed queries the same way.
@@ -129,10 +129,10 @@ def build_index(
     vectorizer = None
     try:
         matrix = embed_texts(texts)
-        backend = _BACKEND_OPENAI
-    except openai.OpenAIError as e:
+        backend = _BACKEND_GEMINI
+    except genai_errors.APIError as e:
         print(
-            f"OpenAI embeddings unavailable ({e.__class__.__name__}); "
+            f"Gemini embeddings unavailable ({e.__class__.__name__}: {str(e)[:200]}); "
             "falling back to a local TF-IDF index.",
             file=sys.stderr,
         )
@@ -202,7 +202,18 @@ def semantic_search(
     if backend == _BACKEND_TFIDF:
         query_vector = vectorizer.transform([query]).toarray().astype(np.float32)
     else:
-        query_vector = embed_texts([query])
+        try:
+            query_vector = embed_texts([query])
+        except genai_errors.APIError as e:
+            # This index's cached matrix is in Gemini's vector space -- a TF-IDF
+            # query vector wouldn't be comparable to it, so there's no
+            # same-space fallback to degrade to here (unlike build_index()).
+            raise RuntimeError(
+                "This index was built with live Gemini embeddings, but embedding "
+                f"the query failed ({e.__class__.__name__}: {str(e)[:200]}). Retry "
+                "once the API is available again, or run build_index() again to "
+                "force the TF-IDF backend for both the corpus and future queries."
+            ) from e
 
     scores = cosine_similarity(query_vector, matrix)[0]
     top_indices = np.argsort(scores)[::-1][:top_k]

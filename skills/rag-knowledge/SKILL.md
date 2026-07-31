@@ -93,22 +93,26 @@ print(format_rag_answer(result))
 ### Notes
 
 - **Embedding fallback:** same pattern as `semantic-search` and
-  `recommendation` — if the OpenAI embeddings call fails (quota, key,
-  network), `build_index()` falls back to a `TfidfVectorizer` fit on the
-  chunk set and persists it so `retrieve()` embeds queries the same way.
-  `meta.json` records which backend built the index.
-- **Answer-generation fallback:** `rag_answer()` tries a Gemini
-  (`gemini-2.5-flash`) generation call constrained to the retrieved
-  context — Gemini rather than OpenAI here specifically, since it's the
-  LLM `docs/architecture.md` already designates for OpenClaw orchestration
-  and has a free tier, so this doesn't add a second paid dependency beyond
-  the embeddings model. If that call also fails, it falls back to
+  `recommendation` — if the Gemini embeddings call fails (free-tier quota,
+  key, network), `build_index()` falls back to a `TfidfVectorizer` fit on
+  the chunk set and persists it so `retrieve()` embeds queries the same
+  way. `meta.json` records which backend built the index. A *query-time*
+  failure (index built fine, but a later `retrieve()` call hits quota)
+  raises a clear `RuntimeError` instead of crashing or silently comparing
+  incompatible vector spaces — see `semantic-search`'s notes for why.
+- **Answer-generation fallback:** `rag_answer()` also uses Gemini
+  (`gemini-2.5-flash`) for generation, same provider as the embeddings —
+  it's the LLM `docs/architecture.md` already designates for OpenClaw
+  orchestration, and using one free-tier provider for both calls avoids a
+  second (paid) dependency. If that call fails, it falls back to
   returning the single most relevant chunk verbatim, tagged
   `backend: "extractive"` — the caller can always tell a generated answer
   from the fallback and format accordingly. Requires `GEMINI_API_KEY` in
   `.env` (same key your OpenClaw gateway already uses, at
   `~/.openclaw/.env` — copy the value over, it's a separate gitignored
-  file local to this project).
+  file local to this project). Embeddings (`embed_content`) and generation
+  (`generate_content`) are billed against separate free-tier quota
+  metrics, so exhausting one doesn't necessarily affect the other.
 - **Market reports are generated, not stored:** per the handbook's
   knowledge-source list ("market reports sourced via the market analytics
   agent"), `market_report_document()` reuses

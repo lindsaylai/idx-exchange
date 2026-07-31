@@ -8,7 +8,7 @@ metadata:
         "requires":
           {
             "bins": ["python3"],
-            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE"],
+            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE", "GEMINI_API_KEY"],
           },
       },
   }
@@ -84,9 +84,9 @@ for hit in find_similar_listings(1018767064, top_k=5):
   `semantic-search`'s static index. `candidate_limit` defaults to 50 (vs.
   semantic-search's 1,000) specifically to bound that per-call embedding
   cost.
-- **Same TF-IDF fallback as Week 6:** if the OpenAI embeddings call fails
-  (quota, key, network), falls back to a `TfidfVectorizer` fit fresh on the
-  target + this call's candidate remarks.
+- **Same TF-IDF fallback as Week 6:** if the Gemini embeddings call fails
+  (free-tier quota, key, network), falls back to a `TfidfVectorizer` fit
+  fresh on the target + this call's candidate remarks.
 - `validate_with_comps` anchors its 6-month window to `CURDATE()` on both
   ends, not just a lower bound — same reason as `search_listings.getSoldComps`
   and `market_stats.py`: a few `california_sold` rows have corrupted,
