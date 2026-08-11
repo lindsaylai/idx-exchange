@@ -89,6 +89,11 @@ idx-exchange/
 │       ├── SKILL.md
 │       ├── rag.py                # chunk/index/retrieve + grounded answer generation
 │       └── test_rag.py
+│   └── orchestrator/
+│       ├── SKILL.md
+│       ├── orchestrate.py        # classify_intent() + orchestrate() -- routes/merges across all 5 skills
+│       ├── test_orchestrate.py
+│       └── chat.py               # interactive CLI for manual testing
 ├── docs/
 │   └── knowledge/             # RAG source docs: field defs, glossary, CA disclosures, internal docs
 │   └── architecture.md       # Full system architecture + flow diagrams
@@ -109,7 +114,7 @@ idx-exchange/
 | 6 | Embeddings & Vector Search | Done |
 | 7 | Recommendation Engine | Done |
 | 8 | RAG Pipeline | Done |
-| 9 | Multi-Agent Orchestration | — |
+| 9 | Multi-Agent Orchestration | Done |
 | 10 | WhatsApp Layer | — |
 | 11 | Email Agents & Safety | — |
 | 12 | Capstone Demo | — |
@@ -122,8 +127,16 @@ idx-exchange/
 - **RAG answer generation:** Google Gemini `gemini-2.5-flash` (Week 8, `rag-knowledge`) — free tier, and the same LLM already designated for OpenClaw orchestration; falls back to returning the top retrieved chunk verbatim if unavailable.
 - No OpenAI dependency, and no hosted embeddings dependency either — both were tried (see git history) and dropped in favor of the fully local embedding model above, since embeddings happen in bursts (indexing hundreds of listings/chunks at once) that reliably tripped free-tier per-minute quotas on both OpenAI and Gemini. Gemini is still used for `rag-knowledge`'s generation step, where traffic is much lighter (one call per question).
 
-**Planned (Week 9+, not yet implemented):** OpenClaw agent runtime as the
-orchestrator, WhatsApp as the delivery channel. Weeks 0–8 run as plain
-Python skills invoked directly (see `chat.py`) — there's no LLM-driven
-intent routing or tool-calling loop yet, and no OpenClaw/WhatsApp wiring in
-this repo.
+**Multi-agent orchestration (Week 9):** `skills/orchestrator/orchestrate.py`
+classifies each message's intent (`search`, `semantic`, `market`,
+`recommend`, `knowledge`, or `mixed`) via keyword/regex heuristics — same
+style as `parse_query.py`, not an LLM call — and routes it to the matching
+skill(s) above, running two in parallel and merging their replies for a
+mixed-intent query. See `skills/orchestrator/SKILL.md` for the full
+classification precedence and known limitations.
+
+**Planned (Week 10+, not yet implemented):** OpenClaw as the delivery
+channel, WhatsApp wiring, and the Week 11 email draft-then-approve flow.
+Weeks 0–9 run as plain Python skills invoked directly (see `chat.py` in
+`property-search`, `rag-knowledge`, and `orchestrator`) — there's no
+OpenClaw/WhatsApp wiring in this repo yet.
