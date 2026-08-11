@@ -72,14 +72,14 @@ Communication interfaces between users and the agent.
 
 Modular capability units — each skill teaches the agent how to handle a class of tasks.
 
-| Skill (planned) | Week | Role |
+| Skill | Week | Role |
 |-----------------|------|------|
-| `property-search` | 2–3 | Parse NL queries → query `rets_property` |
-| `market-stats` | 5 | Aggregations over `california_sold` |
-| `semantic-search` | 6 | Embedding-based similarity search over `L_Remarks` |
-| `recommendation` | 7 | Similar listings + comp validation |
+| `property-search` | 2–3 | Parse NL queries → query `rets_property` — Done |
+| `market-stats` | 5 | Aggregations over `california_sold` — Done |
+| `semantic-search` | 6 | Embedding-based similarity search over `L_Remarks` — Done |
+| `recommendation` | 7 | Similar listings + comp validation — Done |
 | `rag-knowledge` | 8 | MLS field definitions & RE terminology — Done |
-| `orchestrator` | 9 | Route mixed-intent queries to agents |
+| `orchestrator` | 9 | Classify intent, route/merge across all 5 skills above — Done |
 
 Skills live as `SKILL.md` files (plus optional scripts) in the workspace or project repo.
 
@@ -119,17 +119,23 @@ Session memory is updated after each turn so follow-up messages like “make it 
 
 ### 6. Orchestrator
 
-The routing layer (Week 9) that classifies intent and dispatches to specialized agents:
+The routing layer (Week 9, `skills/orchestrator/orchestrate.py`) that
+classifies each message's intent and dispatches to the matching skill(s):
 
-| Intent | Agent |
+| Intent | Routes to |
 |--------|-------|
-| `search` | propertySearchAgent |
-| `market` | marketStatsAgent |
-| `recommend` | recommendationAgent |
-| `knowledge` | ragAgent |
-| `mixed` | parallel agents → merged response |
+| `search` | `property-search` (`session.handleMessage`) |
+| `semantic` | `semantic-search` |
+| `market` | `market-stats` |
+| `recommend` | `recommendation` |
+| `knowledge` | `rag-knowledge` |
+| `mixed` | `property-search` + `market-stats`, run concurrently → merged response |
 
-Before Week 9, a single property-search skill handles search queries directly.
+Classification is a keyword/regex heuristic (same style as
+`parse_query.py`), not an LLM call — see `skills/orchestrator/SKILL.md` for
+the full precedence order and known edge cases. Gemini remains this
+project's only hosted-LLM call, confined to `rag-knowledge`'s answer
+generation.
 
 ---
 
@@ -246,7 +252,7 @@ flowchart TB
 | 6 | Embeddings | Vector search over `L_Remarks` — Done |
 | 7 | Recommendations | Hybrid scoring + comp validation — Done |
 | 8 | RAG | Document retrieval for MLS terminology — Done |
-| 9 | Multi-Agent Orchestration | Intent router across all agents |
+| 9 | Multi-Agent Orchestration | Intent router across all agents — Done |
 | 10 | WhatsApp Layer | Production message formatting |
 | 11 | Email + Safety | Draft-then-approve email workflows |
 | 12 | Capstone Demo | Full integrated assistant |
