@@ -87,7 +87,7 @@ Modular capability units — each skill teaches the agent how to handle a class 
 | `semantic-search` | 6 | Embedding-based similarity search over `L_Remarks` — Done |
 | `recommendation` | 7 | Similar listings + comp validation — Done |
 | `rag-knowledge` | 8 | MLS field definitions & RE terminology — Done |
-| `orchestrator` | 9 | Classify intent, route/merge across all 5 skills above — Done |
+| `orchestrator` | 9 | Classify intent, route/merge across all 5 non-email skills above — Done; email intent added Week 12 |
 | `email-agent` | 11 | Draft-then-approve email workflow + row-limit guardrails — Done |
 
 Skills live as `SKILL.md` files (plus optional scripts) in the workspace or project repo.
@@ -138,6 +138,7 @@ classifies each message's intent and dispatches to the matching skill(s):
 | `market` | `market-stats` |
 | `recommend` | `recommendation` |
 | `knowledge` | `rag-knowledge` |
+| `email` | `email-agent`, as a draft turn + a separate approve/decline turn (Week 12) |
 | `mixed` | `property-search` + `market-stats`, run concurrently → merged response |
 
 Classification is a keyword/regex heuristic (same style as
@@ -145,6 +146,13 @@ Classification is a keyword/regex heuristic (same style as
 the full precedence order and known edge cases. Gemini remains this
 project's only hosted-LLM call, confined to `rag-knowledge`'s answer
 generation.
+
+`email`'s pending draft lives on the per-user session
+(`session["pendingEmailDraft"]`), checked before intent classification even
+runs on the next message: a clear "yes" sends via `email-agent`'s own
+`send_approved_email()` (unchanged approval gate from Week 11), a clear
+"no" discards, anything else is routed normally and leaves the draft
+pending.
 
 ---
 
@@ -264,7 +272,7 @@ flowchart TB
 | 9 | Multi-Agent Orchestration | Intent router across all agents — Done |
 | 10 | WhatsApp Layer | Production message formatting — Done (code); live gateway wiring pending |
 | 11 | Email + Safety | Draft-then-approve email workflows — Done |
-| 12 | Capstone Demo | Full integrated assistant |
+| 12 | Capstone Demo | Full integrated assistant — orchestrator/email integration Done; live demo, video, and written reflection are outside this repo |
 
 ---
 
