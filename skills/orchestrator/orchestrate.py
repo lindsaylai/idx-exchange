@@ -1,22 +1,22 @@
 """
-Week 9: Multi-Agent Orchestration.
+Week 9: Multi-Agent Orchestration. Week 12: capstone integration adds the
+email intent below.
 
 Classifies each incoming message's intent and routes it to the specialized
 skill(s) that handle it, merging results for mixed-intent queries. Per the
-handbook's Agent Registry (Week 9), this fans out to:
+handbook's Agent Registry (Week 9) plus emailDraftAgent (Week 11, wired in
+for the Week 12 capstone), this fans out to:
 
     search     -> property-search   (Week 2-4: structured filters, session memory)
     semantic   -> semantic-search   (Week 6: fuzzy/descriptive queries)
     market     -> market-stats      (Week 5: aggregations over california_sold)
     recommend  -> recommendation    (Week 7: similar listings + comp validation)
     knowledge  -> rag-knowledge     (Week 8: definitional/schema questions)
+    email      -> email-agent       (Week 11: draft-then-approve, two WhatsApp turns)
     mixed      -> search + market in parallel, merged
 
-emailDraftAgent isn't in this registry -- it's Week 11, not yet built (see
-docs/architecture.md's roadmap).
-
 Intent classification is a keyword/regex heuristic, same style as
-parse_query.parse_property_query(), rather than an LLM call: routing five
+parse_query.parse_property_query(), rather than an LLM call: routing six
 well-separated skills doesn't need one, and it keeps this project's only
 paid-API dependency (Gemini) confined to rag-knowledge's generation step,
 consistent with README's Tech Stack notes.
@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "market-stats")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "semantic-search"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "recommendation"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "rag-knowledge"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "email-agent"))
 
 from parse_query import parse_property_query
 from session import getSession, handleMessage
@@ -39,8 +40,15 @@ from market_stats import format_market_summary
 from semantic_search import semantic_search, format_semantic_result
 from recommend import find_similar_listings, format_similar_listing
 from rag import rag_answer, format_rag_answer
+from email_agent import (
+    draft_market_report,
+    draft_listing_alert,
+    draft_property_summary,
+    draft_recommendation_digest,
+    send_approved_email,
+)
 
-INTENTS = ("search", "semantic", "market", "recommend", "knowledge", "mixed")
+INTENTS = ("search", "semantic", "market", "recommend", "knowledge", "email", "mixed")
 
 # Order of precedence when classifying -- see classify_intent()'s docstring
 # for the reasoning behind each branch. Each regex is a set of surface
@@ -92,10 +100,20 @@ _CITY_MENTION_RE = re.compile(r"\bin\s+[A-Z][a-zA-Z]+")
 
 _LISTING_ID_RE = re.compile(r"\b(\d{6,})\b")
 
+# Checked first, before every other branch: "email me a market report for
+# San Diego" carries market signals too, but the overriding intent is
+# unambiguous -- the user wants it emailed, not recited back. A message
+# mentioning "email"/"e-mail" for any other reason in this domain is
+# vanishingly unlikely, so no further disambiguation is done here.
+_EMAIL_INTENT_RE = re.compile(r"\be-?mail\b", re.IGNORECASE)
+
 
 def classify_intent(message: str) -> str:
     """
     Return one of INTENTS for a free-text message.
+
+    "email" wins over every other intent when the message mentions
+    email/e-mail at all -- see _EMAIL_INTENT_RE's comment.
 
     "mixed" fires when a message both requests listings (a hard filter, or
     a request verb + property noun) and carries a market signal in the same
@@ -106,6 +124,9 @@ def classify_intent(message: str) -> str:
     filter and a competing descriptive/vibe cue is read as "semantic"
     instead of "search" -- see _REQUEST_VERB_RE's comment.
     """
+    if _EMAIL_INTENT_RE.search(message):
+        return "email"
+
     has_hard_filter = bool(_HARD_FILTER_RE.search(message))
     has_request_phrase = bool(_REQUEST_VERB_RE.search(message) and _PROPERTY_NOUN_RE.search(message))
     has_semantic_hint = bool(_SEMANTIC_HINT_RE.search(message))
@@ -134,9 +155,10 @@ def classify_intent(message: str) -> str:
 
 # Lenient fallback for pulling a city out of a message that names one
 # without the clean phrasing parse_property_query() expects ("...in
-# Pasadena and tell me..." vs. its "...in Pasadena under $..." shape) --
-# just the run of capitalized word(s) right after "in ".
-_CITY_EXTRACT_RE = re.compile(r"\bin\s+((?:[A-Z][a-zA-Z]+\s*){1,3})")
+# Pasadena and tell me..." vs. its "...in Pasadena under $..." shape, or
+# "a market report for San Diego" -- Week 12's email intent's phrasing) --
+# just the run of capitalized word(s) right after "in "/"for ".
+_CITY_EXTRACT_RE = re.compile(r"\b(?:in|for)\s+((?:[A-Z][a-zA-Z]+\s*){1,3})")
 
 
 def _extract_city(message: str, user_id: str | None) -> str | None:
@@ -169,13 +191,131 @@ def _format_combined(search_reply: str, market_reply: str) -> str:
     return f"{search_reply}\n\n---\n\n{market_reply}"
 
 
+# --- Week 12: email draft-then-approve, as two separate WhatsApp turns ----
+
+_EMAIL_ADDRESS_RE = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
+_APPROVE_RE = re.compile(r"^\s*(yes|yep|yeah|send it|approved?|confirm(ed)?|go ahead|do it)[.!]?\s*$", re.IGNORECASE)
+_DECLINE_RE = re.compile(r"^\s*(no|nope|cancel|don'?t send|discard|never ?mind)[.!]?\s*$", re.IGNORECASE)
+_HTML_PARAGRAPH_BOUNDARY_RE = re.compile(r"</p>\s*<p>", re.IGNORECASE)
+_HTML_BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _extract_email_address(message: str) -> str | None:
+    match = _EMAIL_ADDRESS_RE.search(message)
+    return match.group(0) if match else None
+
+
+def _format_draft_preview(draft: dict) -> str:
+    """Plain-text rendering of an HTML email draft for a WhatsApp bubble."""
+    # Order matters: collapse </p><p> boundaries into a blank line *before*
+    # stripping tags, otherwise adjacent cards (each its own <p>...</p>,
+    # per email_agent.py's content builders) run together with no separator.
+    body = _HTML_PARAGRAPH_BOUNDARY_RE.sub("\n\n", draft["body"])
+    body = _HTML_BR_RE.sub("\n", body)
+    body = _HTML_TAG_RE.sub("", body).strip()
+    return (
+        f"Draft ready -- to: {draft['to']}, subject: {draft['subject']}\n\n"
+        f"{body}\n\n"
+        f"Reply 'yes' to send, or 'no' to discard."
+    )
+
+
+def _handle_pending_draft_reply(message: str, pending_draft: dict, session: dict) -> dict | None:
+    """
+    If `message` is a clear yes/no reply to `pending_draft`, act on it and
+    return a result dict. Otherwise return None so the caller falls through
+    to normal intent classification -- e.g. the user changed their mind and
+    asked for something else instead of replying yes/no; the pending draft
+    is left in place either way (a fresh "email ..." request will replace
+    it; anything else just leaves it there for a later yes/no).
+    """
+    stripped = message.strip()
+    if _APPROVE_RE.match(stripped):
+        result = send_approved_email(pending_draft, approved=True)
+        session["pendingEmailDraft"] = None
+        return {"intent": "email", "response": f"Sent to {result['to']}."}
+    if _DECLINE_RE.match(stripped):
+        session["pendingEmailDraft"] = None
+        return {"intent": "email", "response": "Okay, discarded that draft -- nothing was sent."}
+    return None
+
+
+# Fields checked against parse_property_query()'s output to decide whether
+# a message names enough hard filters to be a listing-alert search, as
+# opposed to a bare city mention (-> market report instead).
+_ALERT_FILTER_KEYS = ("maxPrice", "beds", "baths", "sqft", "type", "pool", "hasView", "maxHOA")
+
+
+def _handle_email_intent(message: str, user_id: str, session: dict) -> dict:
+    """
+    Build the right kind of draft for an "email ..." request and stash it
+    on the session as pending -- never sends. Which content builder runs is
+    decided by the same signals the other intents already use, checked in
+    this order:
+      1. "similar to" / "comparable" phrasing -> recommendation digest
+         (listing id from the message, else the user's last search result)
+      2. hard filters (beds/baths/price/type) -> listing alert -- checked
+         *before* the bare-listing-id case below, since a price like
+         "$1,500,000" also matches the 6+-digit listing-id pattern and
+         would otherwise be misread as "email me listing 1500000"
+      3. a bare listing id in the message      -> property summary
+      4. a named city with no hard filters      -> market report
+      5. none of the above                      -> ask what to send
+    """
+    to = _extract_email_address(message)
+    if not to:
+        return {"intent": "email", "response": "What email address should I send this to?"}
+
+    parsed = parse_property_query(message)
+    has_hard_filter = any(parsed.get(k) is not None for k in _ALERT_FILTER_KEYS)
+
+    try:
+        if _RECOMMEND_RE.search(message):
+            listing_id = _extract_listing_id(message, user_id)
+            if listing_id is None:
+                return {
+                    "intent": "email",
+                    "response": "Which listing should the recommendations be based on? Search for one first.",
+                }
+            draft = draft_recommendation_digest(to, listing_id)
+        elif has_hard_filter:
+            draft = draft_listing_alert(to, parsed)
+        elif _LISTING_ID_RE.search(message):
+            draft = draft_property_summary(to, _LISTING_ID_RE.search(message).group(1))
+        else:
+            city = _extract_city(message, user_id)
+            if not city:
+                return {
+                    "intent": "email",
+                    "response": "What would you like emailed -- a market report, listing alert, "
+                    "property summary, or similar-listings digest?",
+                }
+            draft = draft_market_report(to, city)
+    except ValueError as e:
+        return {"intent": "email", "response": str(e)}
+
+    session["pendingEmailDraft"] = draft
+    return {"intent": "email", "response": _format_draft_preview(draft)}
+
+
 def orchestrate(user_id: str, message: str) -> dict:
     """
     Classify `message`'s intent and route it to the matching skill(s).
 
     Returns {"intent": <one of INTENTS>, "response": <display-ready string>}.
     """
+    session = getSession(user_id)
+    pending_draft = session.get("pendingEmailDraft")
+    if pending_draft is not None:
+        reply = _handle_pending_draft_reply(message, pending_draft, session)
+        if reply is not None:
+            return reply
+
     intent = classify_intent(message)
+
+    if intent == "email":
+        return _handle_email_intent(message, user_id, session)
 
     if intent == "mixed":
         city = _extract_city(message, user_id)

@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: Classify a free-text message's intent and route it to the specialized skill(s) that handle it -- property-search, semantic-search, market-stats, recommendation, or rag-knowledge -- merging results for mixed-intent queries. Also formats replies for WhatsApp and handles the message-in/message-out boundary for that channel.
+description: Classify a free-text message's intent and route it to the specialized skill(s) that handle it -- property-search, semantic-search, market-stats, recommendation, rag-knowledge, or email-agent -- merging results for mixed-intent queries and handling the email draft-then-approve flow as two turns. Also formats replies for WhatsApp and handles the message-in/message-out boundary for that channel.
 metadata:
   {
     "openclaw":
@@ -8,7 +8,7 @@ metadata:
         "requires":
           {
             "bins": ["python3"],
-            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE", "GEMINI_API_KEY"],
+            "env": ["MYSQL_HOST", "MYSQL_USER", "MYSQL_DATABASE", "GEMINI_API_KEY", "EMAIL_USER", "EMAIL_PASSWORD"],
           },
       },
   }
@@ -16,7 +16,7 @@ metadata:
 
 # orchestrator
 
-The single entry point across all five specialized skills. Classifies each
+The single entry point across all six specialized skills. Classifies each
 incoming message's intent and dispatches it -- or, for a mixed-intent
 message, dispatches it to more than one skill in parallel and merges the
 replies.
@@ -54,16 +54,18 @@ Or drive it interactively: `python skills/orchestrator/chat.py`.
 | `market` | `market-stats` | 5 |
 | `recommend` | `recommendation` | 7 |
 | `knowledge` | `rag-knowledge` | 8 |
+| `email` | `email-agent`, as a two-turn draft-then-approve exchange | 11 (wired in here at 12) |
 | `mixed` | `property-search` + `market-stats`, run concurrently and merged | 2-4, 5 |
 
-`emailDraftAgent` from the handbook's Week 9 registry isn't included --
-that's Week 11 and isn't built yet (see `docs/architecture.md`'s roadmap).
+See "Week 12: email intent" below for `email`'s own routing logic --
+`emailDraftAgent` from the handbook's Week 9 registry, wired in as part of
+the Week 12 capstone integration.
 
 ### Functions
 
 - `classify_intent(message)` -- returns one of `search`, `semantic`,
-  `market`, `recommend`, `knowledge`, `mixed`. A keyword/regex heuristic
-  (see below), not an LLM call.
+  `market`, `recommend`, `knowledge`, `email`, `mixed`. A keyword/regex
+  heuristic (see below), not an LLM call.
 - `orchestrate(user_id, message)` -- classifies, routes, and returns
   `{"intent": ..., "response": <display-ready string>}`.
 
@@ -79,6 +81,10 @@ pulled directly from the handbook's own example queries for each week.
 
 Precedence, evaluated in this order:
 
+0. **email** -- the message mentions "email"/"e-mail" at all. Checked
+   before everything else: "email me a market report for San Diego" carries
+   market signals too, but the overriding intent is unambiguous. See "Week
+   12: email intent" below.
 1. **mixed** -- a hard filter or a request-verb-plus-property-noun phrase
    *and* a market signal in the same message (e.g. "Find me affordable
    homes in Pasadena and tell me whether prices are rising").
@@ -222,19 +228,101 @@ mid-card) and appending a note that more results exist. Only matters for
 `search`/`semantic`/`recommend` replies with several cards back to back;
 `market`/`knowledge` replies are well under the limit in practice.
 
-### Live WhatsApp wiring (not done by this commit)
+### Live WhatsApp wiring
 
-This project's OpenClaw gateway is already linked to a real WhatsApp
-account (Week 0) and `~/.openclaw/openclaw.json` already registers
-`property-search`, `market-stats`, `semantic-search`, and `recommendation`
-as live skills (`skills.entries`) -- confirmed working over WhatsApp before
-`orchestrator` existed. Actually pointing that live config at this skill
-(so WhatsApp messages route through `handle_whatsapp_message()` instead of
-OpenClaw picking among the individual skills itself) means editing that
-config -- a change to shared, already-working personal infrastructure, not
-this repo. That edit is intentionally left for a separate, explicit step
-rather than done automatically as part of this commit.
+This project's OpenClaw gateway is linked to a real WhatsApp account
+(Week 0). `~/.openclaw/openclaw.json`'s `skills.entries` now registers
+`orchestrator` as the sole skill (replacing the four individually
+registered pre-orchestrator entries), so live WhatsApp traffic routes
+through `handle_whatsapp_message()` -> `orchestrate()`. If this ever needs
+rolling back, a pre-change backup is kept at
+`~/.openclaw/openclaw.json.pre-week10-orchestrator-wiring.bak`:
+```bash
+cp ~/.openclaw/openclaw.json.pre-week10-orchestrator-wiring.bak ~/.openclaw/openclaw.json
+launchctl kickstart -k gui/$(id -u)/ai.openclaw.gateway
+```
 
 Tests: `python skills/orchestrator/test_whatsapp.py` (17 checks -- emoji
 prefixing per intent, truncation behavior, and `handle_whatsapp_message()`
 end to end including the exception -> friendly-reply path).
+
+## Week 12: email intent (capstone integration)
+
+Wires `email-agent` (Week 11) into the orchestrator so a WhatsApp user can
+ask for something to be emailed, review the draft, and approve or decline
+it -- as two separate turns, never one. This is the piece the handbook's
+Week 12 demo script calls out as needing "two steps by design":
+
+```bash
+cd /Users/lindsaylai/projects/idx-exchange
+source venv/bin/activate
+python -c "
+import sys; sys.path.insert(0, 'skills/orchestrator')
+from orchestrate import orchestrate
+
+r1 = orchestrate('demo-user', 'Email you@example.com a market report for San Diego')
+print(r1['response'])          # shows the draft, asks for yes/no
+
+r2 = orchestrate('demo-user', 'yes')   # separate turn -- this is what actually sends
+print(r2['response'])
+"
+```
+
+### How a draft gets built
+
+`_handle_email_intent()` picks a content builder using the same signals
+the other intents already use, in this order:
+
+1. **recommendation digest** -- "similar to"/"comparable" phrasing
+   (`_RECOMMEND_RE`, same regex `recommend` uses). Listing id comes from
+   the message, else `session["lastResults"][0]` via the existing
+   `_extract_listing_id()`.
+2. **listing alert** -- a hard filter (beds/baths/price/type/pool) is
+   present. Checked *before* the bare-listing-id case below: a price like
+   "$1,500,000" also matches the 6+-digit listing-id regex, and without
+   this ordering "email me listings in Irvine under $1,500,000" would get
+   misread as "email me listing #1500000".
+3. **property summary** -- a bare listing id in the message with no hard
+   filter.
+4. **market report** -- a named city with no hard filter and no listing id
+   (`_extract_city()`, same lenient fallback `market`/`mixed` use --
+   broadened in this commit to also recognize "a report **for** San Diego",
+   not just "**in** San Diego", since that's how an email request more
+   naturally gets phrased).
+5. None of the above -- asks what to send instead of guessing.
+
+If no email address is found anywhere in the message (`_EMAIL_ADDRESS_RE`),
+it asks for one before building anything.
+
+### The approval turn
+
+The built draft is stashed on the session (`session["pendingEmailDraft"]`)
+and previewed in plain text (`_format_draft_preview()` strips the HTML the
+content builders produce). `orchestrate()` checks for a pending draft
+*before* running `classify_intent()` at all: if one exists and the new
+message is a clear yes (`_APPROVE_RE`: "yes", "send it", "approved", "go
+ahead", ...) it calls `send_approved_email(draft, approved=True)`; a clear
+no (`_DECLINE_RE`: "no", "cancel", "discard", ...) clears it without
+sending. Anything else falls through to normal routing and **leaves the
+pending draft in place** -- a stray "what does DOM mean?" while a draft is
+pending doesn't discard it; a fresh "email ... " request does replace it,
+since that's an unambiguous new ask.
+
+This reuses `email-agent`'s own approval gate exactly as built in Week 11
+(`send_approved_email` still refuses anything that isn't a real draft with
+literal `approved=True`) -- this module only decides *when* to call it,
+never bypasses *how* it decides to send.
+
+### Testing without ever sending real email
+
+Every test in `test_orchestrate_email.py` monkeypatches
+`orchestrate.send_approved_email` with a spy before running, the same
+pattern `test_whatsapp.py` uses for `orchestrate()` itself. No test in this
+codebase can place a real outbound call regardless of what's in `.env`.
+
+Tests: `python skills/orchestrator/test_orchestrate_email.py` (29 checks --
+`classify_intent()` tagging every email-phrased example, the full
+draft/approve/decline cycle, each content builder's routing including the
+price-vs-listing-id precedence fix, the missing-address and ambiguous-
+request fallbacks, and the pending-draft-survives-an-unrelated-message
+case).
