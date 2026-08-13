@@ -93,7 +93,10 @@ idx-exchange/
 │       ├── SKILL.md
 │       ├── orchestrate.py        # classify_intent() + orchestrate() -- routes/merges across all 5 skills
 │       ├── test_orchestrate.py
-│       └── chat.py               # interactive CLI for manual testing
+│       ├── chat.py               # interactive CLI for manual testing (raw orchestrate() output)
+│       ├── whatsapp.py           # handle_whatsapp_message() -- WhatsApp-shaped reply + error boundary
+│       ├── test_whatsapp.py
+│       └── whatsapp_chat.py      # interactive CLI simulating the actual WhatsApp experience
 ├── docs/
 │   └── knowledge/             # RAG source docs: field defs, glossary, CA disclosures, internal docs
 │   └── architecture.md       # Full system architecture + flow diagrams
@@ -115,7 +118,7 @@ idx-exchange/
 | 7 | Recommendation Engine | Done |
 | 8 | RAG Pipeline | Done |
 | 9 | Multi-Agent Orchestration | Done |
-| 10 | WhatsApp Layer | — |
+| 10 | WhatsApp Layer | Done (code) — live gateway wiring pending, see below |
 | 11 | Email Agents & Safety | — |
 | 12 | Capstone Demo | — |
 
@@ -135,8 +138,20 @@ skill(s) above, running two in parallel and merging their replies for a
 mixed-intent query. See `skills/orchestrator/SKILL.md` for the full
 classification precedence and known limitations.
 
-**Planned (Week 10+, not yet implemented):** OpenClaw as the delivery
-channel, WhatsApp wiring, and the Week 11 email draft-then-approve flow.
-Weeks 0–9 run as plain Python skills invoked directly (see `chat.py` in
-`property-search`, `rag-knowledge`, and `orchestrator`) — there's no
-OpenClaw/WhatsApp wiring in this repo yet.
+**WhatsApp communication layer (Week 10):**
+`skills/orchestrator/whatsapp.py` wraps `orchestrate()` for the WhatsApp
+channel — an intent-tagged emoji prefix, a length cap for a single text
+bubble, and a try/except boundary so a skill-level failure becomes a
+friendly reply instead of a dropped message. This project's OpenClaw
+gateway is already linked to a real WhatsApp account and already routes
+messages to the four pre-orchestrator skills (`~/.openclaw/openclaw.json`
+`skills.entries`) — pointing that live config at `orchestrator` instead is
+a deliberate, separate step (editing shared personal infrastructure, not
+this repo) and isn't done automatically by this commit. See
+`skills/orchestrator/SKILL.md`'s "Live WhatsApp wiring" section.
+
+**Planned (Week 11+, not yet implemented):** the email draft-then-approve
+flow. Weeks 0–10 run as plain Python skills invoked directly (see `chat.py`
+in `property-search`, `rag-knowledge`, and `orchestrator`, plus
+`orchestrator/whatsapp_chat.py`) — pending the live gateway wiring above,
+WhatsApp messages don't yet reach `orchestrate()` in production.
