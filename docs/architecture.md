@@ -67,6 +67,14 @@ Communication interfaces between users and the agent.
 - **WhatsApp** is the primary channel for this project.
 - Messages arrive at the gateway via a linked WhatsApp Web session.
 - Config: `channels.whatsapp` in `~/.openclaw/openclaw.json` (allowlist + self-chat mode).
+- Week 10: `skills/orchestrator/whatsapp.py`'s `handle_whatsapp_message()`
+  is the function OpenClaw's agent calls per incoming message once the
+  gateway is pointed at the `orchestrator` skill — it wraps `orchestrate()`
+  with a WhatsApp-shaped reply (emoji prefix, length cap) and an
+  exception → friendly-reply boundary. Pointing the live gateway config at
+  it is a separate, manual step (see the skill's SKILL.md); as of this
+  writing `skills.entries` still routes WhatsApp to the four
+  pre-orchestrator skills individually.
 
 ### 2. Skills
 
@@ -253,7 +261,7 @@ flowchart TB
 | 7 | Recommendations | Hybrid scoring + comp validation — Done |
 | 8 | RAG | Document retrieval for MLS terminology — Done |
 | 9 | Multi-Agent Orchestration | Intent router across all agents — Done |
-| 10 | WhatsApp Layer | Production message formatting |
+| 10 | WhatsApp Layer | Production message formatting — Done (code); live gateway wiring pending |
 | 11 | Email + Safety | Draft-then-approve email workflows |
 | 12 | Capstone Demo | Full integrated assistant |
 
