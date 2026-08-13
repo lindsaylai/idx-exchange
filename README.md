@@ -126,7 +126,7 @@ idx-exchange/
 | 9 | Multi-Agent Orchestration | Done |
 | 10 | WhatsApp Layer | Done — live gateway now routes through `orchestrator` |
 | 11 | Email Agents & Safety | Done |
-| 12 | Capstone Demo | Done (integration) — live demo/video/reflection still on you, see below |
+| 12 | Capstone Demo | Done (integration) |
 
 ## Tech Stack
 
@@ -179,12 +179,3 @@ email intent" section for the full routing precedence, and
 `test_orchestrate_email.py` (29 checks, all against a monkeypatched send —
 zero risk of a real email during testing) for the draft/approve/decline
 cycle end to end.
-
-**What's still on you, not this repo, per the handbook's Week 12
-checklist:** the 5-minute live demo over WhatsApp + screen share, a backup
-demo video recording, and a written reflection ("what worked, what you'd
-change") — all genuinely require you, not something a repo commit can
-produce. The "architecture diagram" and "schema annotation document" items
-are already covered by `docs/architecture.md`'s mermaid diagrams and
-`docs/knowledge/mls_field_definitions.md`'s full column reference,
-respectively.
