@@ -68,13 +68,13 @@ Communication interfaces between users and the agent.
 - Messages arrive at the gateway via a linked WhatsApp Web session.
 - Config: `channels.whatsapp` in `~/.openclaw/openclaw.json` (allowlist + self-chat mode).
 - Week 10: `skills/orchestrator/whatsapp.py`'s `handle_whatsapp_message()`
-  is the function OpenClaw's agent calls per incoming message once the
-  gateway is pointed at the `orchestrator` skill — it wraps `orchestrate()`
-  with a WhatsApp-shaped reply (emoji prefix, length cap) and an
-  exception → friendly-reply boundary. Pointing the live gateway config at
-  it is a separate, manual step (see the skill's SKILL.md); as of this
-  writing `skills.entries` still routes WhatsApp to the four
-  pre-orchestrator skills individually.
+  is the function OpenClaw's agent calls per incoming message — it wraps
+  `orchestrate()` with a WhatsApp-shaped reply (emoji prefix, length cap)
+  and an exception → friendly-reply boundary. `skills.entries` in
+  `~/.openclaw/openclaw.json` now registers `orchestrator` as the sole
+  skill (replacing the four individual pre-orchestrator entries), so live
+  WhatsApp traffic routes through it. See `skills/orchestrator/SKILL.md`
+  for the rollback path if this ever needs undoing.
 
 ### 2. Skills
 
@@ -88,6 +88,7 @@ Modular capability units — each skill teaches the agent how to handle a class 
 | `recommendation` | 7 | Similar listings + comp validation — Done |
 | `rag-knowledge` | 8 | MLS field definitions & RE terminology — Done |
 | `orchestrator` | 9 | Classify intent, route/merge across all 5 skills above — Done |
+| `email-agent` | 11 | Draft-then-approve email workflow + row-limit guardrails — Done |
 
 Skills live as `SKILL.md` files (plus optional scripts) in the workspace or project repo.
 
@@ -262,7 +263,7 @@ flowchart TB
 | 8 | RAG | Document retrieval for MLS terminology — Done |
 | 9 | Multi-Agent Orchestration | Intent router across all agents — Done |
 | 10 | WhatsApp Layer | Production message formatting — Done (code); live gateway wiring pending |
-| 11 | Email + Safety | Draft-then-approve email workflows |
+| 11 | Email + Safety | Draft-then-approve email workflows — Done |
 | 12 | Capstone Demo | Full integrated assistant |
 
 ---
@@ -272,4 +273,11 @@ flowchart TB
 - API keys live in `.env` / `~/.openclaw/.env` — never committed to git.
 - WhatsApp uses an allowlist (`allowFrom`) — only approved numbers can trigger the agent.
 - SQL uses parameterized queries to prevent injection.
-- Outbound email (Week 11) requires explicit human approval before send.
+- Outbound email (Week 11, `skills/email-agent`) requires explicit human
+  approval before send — `send_approved_email()` refuses anything that
+  didn't come from `draft_email()` or wasn't passed a literal
+  `approved=True`.
+- Every read-only skill's row-returning query is capped at 50 rows
+  (`_MAX_ROWS`, enforced by clamping the parameter, not just a default) —
+  `search_listings.py`, `market_stats.py`, `semantic_search.py`,
+  `recommend.py`, `rag.py`.

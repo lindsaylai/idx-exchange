@@ -31,14 +31,20 @@ _FILTER_COLUMNS = {
 }
 
 
+# Week 11 safety guardrail: never return more than this many rows from a
+# single query, regardless of what a caller asks for.
+_MAX_ROWS = 50
+
+
 def searchActiveListings(filters: dict, page: int = 1, limit: int = 10) -> list[dict]:
     """
     Query rets_property for active listings matching the given filters.
 
     `filters` is the dict returned by parse_property_query() — any key
     left as None is skipped. Results are ordered by price ascending and
-    paginated (`page` is 1-indexed).
+    paginated (`page` is 1-indexed). `limit` is capped at `_MAX_ROWS`.
     """
+    limit = min(limit, _MAX_ROWS)
     where = ["L_Status = 'Active'"]
     params = []
     for key, (column, comparator, transform) in _FILTER_COLUMNS.items():
@@ -89,7 +95,9 @@ def getSoldComps(city: str, months: int = 12, limit: int = 25) -> list[dict]:
     A handful of rows in this dataset have corrupted CloseDate values far in
     the future (data entry errors), so the cutoff is anchored to CURDATE()
     rather than MAX(CloseDate), which those outliers would otherwise skew.
+    `limit` is capped at `_MAX_ROWS` (Week 11 safety guardrail).
     """
+    limit = min(limit, _MAX_ROWS)
     query = """
         SELECT ListingKey, UnparsedAddress, City, ClosePrice, CloseDate,
                DaysOnMarket, LivingArea, BedroomsTotal, BathroomsTotalInteger

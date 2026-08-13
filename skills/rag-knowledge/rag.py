@@ -235,6 +235,11 @@ def _load_index(vectors_path: str, meta_path: str, vectorizer_path: str):
     return matrix, meta["chunks"], meta["backend"], vectorizer
 
 
+# Week 11 safety guardrail: never return more than this many rows from a
+# single query, regardless of what a caller asks for.
+_MAX_ROWS = 50
+
+
 def retrieve(
     query: str,
     top_k: int = 4,
@@ -242,7 +247,9 @@ def retrieve(
     meta_path: str = _META_PATH,
     vectorizer_path: str = _VECTORIZER_PATH,
 ) -> list[dict]:
-    """Embed `query` and return the top_k most similar indexed chunks, ranked by cosine similarity."""
+    """Embed `query` and return the top_k most similar indexed chunks, ranked
+    by cosine similarity. `top_k` is capped at `_MAX_ROWS`."""
+    top_k = min(top_k, _MAX_ROWS)
     matrix, chunks, backend, vectorizer = _load_index(vectors_path, meta_path, vectorizer_path)
     if backend == _BACKEND_TFIDF:
         query_vector = vectorizer.transform([query]).toarray().astype(np.float32)

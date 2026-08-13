@@ -97,6 +97,11 @@ idx-exchange/
 │       ├── whatsapp.py           # handle_whatsapp_message() -- WhatsApp-shaped reply + error boundary
 │       ├── test_whatsapp.py
 │       └── whatsapp_chat.py      # interactive CLI simulating the actual WhatsApp experience
+│   └── email-agent/
+│       ├── SKILL.md
+│       ├── email_agent.py        # draft_email()/send_approved_email() + 4 content builders
+│       ├── test_email_agent.py
+│       └── chat.py               # interactive CLI -- previews drafts only, never sends
 ├── docs/
 │   └── knowledge/             # RAG source docs: field defs, glossary, CA disclosures, internal docs
 │   └── architecture.md       # Full system architecture + flow diagrams
@@ -118,8 +123,8 @@ idx-exchange/
 | 7 | Recommendation Engine | Done |
 | 8 | RAG Pipeline | Done |
 | 9 | Multi-Agent Orchestration | Done |
-| 10 | WhatsApp Layer | Done (code) — live gateway wiring pending, see below |
-| 11 | Email Agents & Safety | — |
+| 10 | WhatsApp Layer | Done — live gateway now routes through `orchestrator` |
+| 11 | Email Agents & Safety | Done |
 | 12 | Capstone Demo | — |
 
 ## Tech Stack
@@ -143,15 +148,26 @@ classification precedence and known limitations.
 channel — an intent-tagged emoji prefix, a length cap for a single text
 bubble, and a try/except boundary so a skill-level failure becomes a
 friendly reply instead of a dropped message. This project's OpenClaw
-gateway is already linked to a real WhatsApp account and already routes
-messages to the four pre-orchestrator skills (`~/.openclaw/openclaw.json`
-`skills.entries`) — pointing that live config at `orchestrator` instead is
-a deliberate, separate step (editing shared personal infrastructure, not
-this repo) and isn't done automatically by this commit. See
-`skills/orchestrator/SKILL.md`'s "Live WhatsApp wiring" section.
+gateway is already linked to a real WhatsApp account; `~/.openclaw/openclaw.json`'s
+`skills.entries` now registers `orchestrator` as the sole skill (replacing
+the four individually-registered pre-orchestrator entries), so WhatsApp
+messages route through `orchestrate()`. See `skills/orchestrator/SKILL.md`'s
+"Live WhatsApp wiring" section for details and the rollback path.
 
-**Planned (Week 11+, not yet implemented):** the email draft-then-approve
-flow. Weeks 0–10 run as plain Python skills invoked directly (see `chat.py`
-in `property-search`, `rag-knowledge`, and `orchestrator`, plus
-`orchestrator/whatsapp_chat.py`) — pending the live gateway wiring above,
-WhatsApp messages don't yet reach `orchestrate()` in production.
+**Email agent & safety guardrails (Week 11):** `skills/email-agent/email_agent.py`
+implements a strict two-step draft-then-approve workflow — `draft_email()`
+and four content builders (`draft_market_report`, `draft_listing_alert`,
+`draft_property_summary`, `draft_recommendation_digest`) can only ever
+produce a pending draft; `send_approved_email()` is the sole function that
+can send, and refuses unless it's handed a real draft *and* an explicit
+`approved=True`. Also added a hard `_MAX_ROWS = 50` cap (clamped in the
+function itself, not just a default) to every other skill's row-returning
+query — `search_listings.py`, `market_stats.py`, `semantic_search.py`,
+`recommend.py`, `rag.py` — per the handbook's "never bulk-export MLS data"
+rule. See `skills/email-agent/SKILL.md` for the full guardrail table and
+what's *not* yet wired (orchestrator/WhatsApp integration for email is
+left for Week 12).
+
+**Planned (Week 12, not yet implemented):** the capstone integration —
+wiring `email-agent` into `orchestrator`/WhatsApp so a draft-and-approve
+flow can happen as two WhatsApp turns, per the handbook's demo script.
