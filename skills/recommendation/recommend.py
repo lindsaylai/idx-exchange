@@ -195,12 +195,18 @@ def validate_with_comps(city: str, sqft: int, price: int) -> dict:
     }
 
 
+# Week 11 safety guardrail: never return more than this many rows from a
+# single query, regardless of what a caller asks for.
+_MAX_ROWS = 50
+
+
 def find_similar_listings(listing_id, top_k: int = 5, candidate_limit: int = 50) -> list[dict]:
     """
     Find the top_k active listings most similar to `listing_id`, each with a
     comp-validated price assessment. Raises ValueError if `listing_id` isn't
-    an active listing.
+    an active listing. `top_k` is capped at `_MAX_ROWS`.
     """
+    top_k = min(top_k, _MAX_ROWS)
     target = _get_active_listing(listing_id)
     if target is None:
         raise ValueError(f"No active listing found for id {listing_id}")

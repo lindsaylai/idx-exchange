@@ -58,8 +58,15 @@ _SUMMARY_QUERY = """
 """
 
 
+# Week 11 safety guardrail: never return more than this many rows from a
+# single query, regardless of what a caller asks for.
+_MAX_ROWS = 50
+
+
 def get_city_market_summary(months: int = 12, limit: int = 25) -> list[dict]:
-    """Top `limit` California cities by sold volume over the trailing `months`."""
+    """Top `limit` California cities by sold volume over the trailing
+    `months`. `limit` is capped at `_MAX_ROWS`."""
+    limit = min(limit, _MAX_ROWS)
     with get_cursor() as cursor:
         cursor.execute(_SUMMARY_QUERY, (months, limit))
         return cursor.fetchall()
