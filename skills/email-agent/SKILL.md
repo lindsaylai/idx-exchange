@@ -114,15 +114,17 @@ this commit, so the real path can't fire by accident) is swappable:
 calls real `smtplib` sending code, so the test suite has zero risk of
 sending a real email regardless of what's in `.env` when it runs.
 
-### Not done here: wiring into the orchestrator/WhatsApp
+### Wired into the orchestrator/WhatsApp (Week 12)
 
 The handbook's Week 12 capstone demo shows an email draft-and-approve flow
-happening over WhatsApp via the orchestrator, as two separate turns. This
-skill provides the building blocks (`draft_*` / `send_approved_email`) but
-isn't yet registered with `orchestrator` (Week 9) or wired into
-`~/.openclaw/openclaw.json` (Week 10's live gateway) -- that's a
-deliberate, separate step, same reasoning as Week 10's live-wiring note in
-`skills/orchestrator/SKILL.md`.
+happening over WhatsApp via the orchestrator, as two separate turns. As of
+Week 12, `orchestrator` (`skills/orchestrator/orchestrate.py`) has an
+`email` intent that calls straight into this module's `draft_*` functions
+and, on a later "yes" turn, `send_approved_email()` -- see
+`skills/orchestrator/SKILL.md`'s "Week 12: email intent" section for the
+routing logic and `~/.openclaw/openclaw.json` live-gateway status. This
+module's own approval gate is unchanged and still the sole thing standing
+between any caller (orchestrator included) and an actual send.
 
 Tests: `python skills/email-agent/test_email_agent.py` (39 checks --
 approval-gate enforcement including edge cases like truthy-non-True

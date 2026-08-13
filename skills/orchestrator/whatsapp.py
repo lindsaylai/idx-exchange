@@ -39,6 +39,7 @@ _INTENT_EMOJI = {
     "market": "📈",
     "recommend": "✨",
     "knowledge": "📚",
+    "email": "📧",
     "mixed": "🧭",
 }
 
