@@ -91,8 +91,9 @@ idx-exchange/
 │       └── test_rag.py
 │   └── orchestrator/
 │       ├── SKILL.md
-│       ├── orchestrate.py        # classify_intent() + orchestrate() -- routes/merges across all 5 skills
+│       ├── orchestrate.py        # classify_intent() + orchestrate() -- routes/merges across all 6 skills
 │       ├── test_orchestrate.py
+│       ├── test_orchestrate_email.py  # Week 12: email intent's draft/approve/decline flow
 │       ├── chat.py               # interactive CLI for manual testing (raw orchestrate() output)
 │       ├── whatsapp.py           # handle_whatsapp_message() -- WhatsApp-shaped reply + error boundary
 │       ├── test_whatsapp.py
@@ -125,7 +126,7 @@ idx-exchange/
 | 9 | Multi-Agent Orchestration | Done |
 | 10 | WhatsApp Layer | Done — live gateway now routes through `orchestrator` |
 | 11 | Email Agents & Safety | Done |
-| 12 | Capstone Demo | — |
+| 12 | Capstone Demo | Done (integration) — live demo/video/reflection still on you, see below |
 
 ## Tech Stack
 
@@ -137,10 +138,10 @@ idx-exchange/
 
 **Multi-agent orchestration (Week 9):** `skills/orchestrator/orchestrate.py`
 classifies each message's intent (`search`, `semantic`, `market`,
-`recommend`, `knowledge`, or `mixed`) via keyword/regex heuristics — same
-style as `parse_query.py`, not an LLM call — and routes it to the matching
-skill(s) above, running two in parallel and merging their replies for a
-mixed-intent query. See `skills/orchestrator/SKILL.md` for the full
+`recommend`, `knowledge`, `email`, or `mixed`) via keyword/regex heuristics
+— same style as `parse_query.py`, not an LLM call — and routes it to the
+matching skill(s) above, running two in parallel and merging their replies
+for a mixed-intent query. See `skills/orchestrator/SKILL.md` for the full
 classification precedence and known limitations.
 
 **WhatsApp communication layer (Week 10):**
@@ -164,10 +165,26 @@ can send, and refuses unless it's handed a real draft *and* an explicit
 function itself, not just a default) to every other skill's row-returning
 query — `search_listings.py`, `market_stats.py`, `semantic_search.py`,
 `recommend.py`, `rag.py` — per the handbook's "never bulk-export MLS data"
-rule. See `skills/email-agent/SKILL.md` for the full guardrail table and
-what's *not* yet wired (orchestrator/WhatsApp integration for email is
-left for Week 12).
+rule. See `skills/email-agent/SKILL.md` for the full guardrail table.
 
-**Planned (Week 12, not yet implemented):** the capstone integration —
-wiring `email-agent` into `orchestrator`/WhatsApp so a draft-and-approve
-flow can happen as two WhatsApp turns, per the handbook's demo script.
+**Capstone integration (Week 12):** `orchestrator` now has an `email`
+intent that calls straight into `email-agent`'s content builders and, on a
+later "yes"/"no" turn, its approval gate — the draft-and-approve flow
+happens as two separate WhatsApp turns, exactly as the handbook's demo
+script requires ("this flow requires two steps by design and can't be
+compressed further"). A price filter like "under $1,500,000" is
+disambiguated from a bare listing id (both match a 6+-digit regex) by
+checking hard filters first. See `skills/orchestrator/SKILL.md`'s "Week 12:
+email intent" section for the full routing precedence, and
+`test_orchestrate_email.py` (29 checks, all against a monkeypatched send —
+zero risk of a real email during testing) for the draft/approve/decline
+cycle end to end.
+
+**What's still on you, not this repo, per the handbook's Week 12
+checklist:** the 5-minute live demo over WhatsApp + screen share, a backup
+demo video recording, and a written reflection ("what worked, what you'd
+change") — all genuinely require you, not something a repo commit can
+produce. The "architecture diagram" and "schema annotation document" items
+are already covered by `docs/architecture.md`'s mermaid diagrams and
+`docs/knowledge/mls_field_definitions.md`'s full column reference,
+respectively.
