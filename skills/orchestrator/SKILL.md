@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: Classify a free-text message's intent and route it to the specialized skill(s) that handle it -- property-search, semantic-search, market-stats, recommendation, or rag-knowledge -- merging results for mixed-intent queries.
+description: Classify a free-text message's intent and route it to the specialized skill(s) that handle it -- property-search, semantic-search, market-stats, recommendation, or rag-knowledge -- merging results for mixed-intent queries. Also formats replies for WhatsApp and handles the message-in/message-out boundary for that channel.
 metadata:
   {
     "openclaw":
@@ -150,3 +150,91 @@ Tests: `python skills/orchestrator/test_orchestrate.py` (37 checks --
 queries, then `orchestrate()` end to end against the real DB/Gemini/local
 embedding model for every intent, including the no-city and no-listing
 fallback paths).
+
+## Week 10: WhatsApp Communication Layer
+
+`whatsapp.py` wraps `orchestrate()` with what an actual channel needs on
+top of a bare function call: a reply shaped for a WhatsApp text bubble, and
+a try/except boundary so a skill-level failure becomes a friendly reply
+instead of a dropped message or a crash.
+
+```bash
+cd /Users/lindsaylai/projects/idx-exchange
+source venv/bin/activate
+python -c "
+import sys; sys.path.insert(0, 'skills/orchestrator')
+from whatsapp import handle_whatsapp_message
+
+print(handle_whatsapp_message('demo-user', 'Is now a good time to buy in San Diego?'))
+"
+```
+
+Or drive it interactively, seeing exactly what a WhatsApp user would see
+(no intent tag, just the reply): `python skills/orchestrator/whatsapp_chat.py`.
+
+### Architecture
+
+```
+WhatsApp -> OpenClaw whatsapp channel (Week 0, already linked) -> this
+skill's handle_whatsapp_message(user_id, message) -> orchestrate() ->
+[routed skill(s)] -> rets_property / california_sold -> formatted reply
+-> OpenClaw -> WhatsApp
+```
+
+The WhatsApp session itself -- the QR-linked device, actually sending and
+receiving messages, the typing indicator -- is OpenClaw's own `whatsapp`
+channel plugin, not this skill's Python code. `handle_whatsapp_message()`
+is the function OpenClaw's agent is meant to call per incoming message;
+wiring OpenClaw's live gateway config to actually do that (registering
+this skill, pointing WhatsApp at it) is a separate, deliberately
+unautomated step -- see the note at the bottom of this section.
+
+### Functions
+
+- `handle_whatsapp_message(user_id, message)` -- the message handler: calls
+  `orchestrate()`, catches any exception and returns a friendly apology
+  instead of raising, then runs the result through `format_for_whatsapp()`.
+  Never raises.
+- `format_for_whatsapp(result)` -- takes an `orchestrate()` result dict and
+  returns the reply text: an intent-tagged emoji prefix (🏠 search, 🔍
+  semantic, 📈 market, ✨ recommend, 📚 knowledge, 🧭 mixed), then
+  length-capped to `_MAX_REPLY_CHARS` (4000, a self-imposed safety margin
+  for a single text bubble -- not a documented WhatsApp/OpenClaw limit).
+
+### Why an emoji prefix instead of per-field emoji cards
+
+The handbook's own `formatForWhatsApp` example decorates each field of
+each listing individually (🏠 address, 💰 price, 🛏 beds/baths, 📐 sqft, 📅
+DOM). This skill's underlying formatters
+(`search_listings.format_listing_card`, `market_stats.format_market_summary`,
+etc.) already return clean, tested, human-readable multi-line cards used
+elsewhere (their own skills' test suites assert on their exact text) --
+re-parsing that finished text to re-decorate individual fields per channel
+would be fragile string surgery for cosmetic gain. A single intent-level
+emoji prefix gets the "this is a WhatsApp-shaped reply" outcome the
+handbook is going for without touching those already-tested strings.
+
+### Truncation
+
+`_truncate()` caps a reply at `_MAX_REPLY_CHARS`, preferring to cut on a
+blank-line card boundary (so a multi-listing reply doesn't get chopped
+mid-card) and appending a note that more results exist. Only matters for
+`search`/`semantic`/`recommend` replies with several cards back to back;
+`market`/`knowledge` replies are well under the limit in practice.
+
+### Live WhatsApp wiring (not done by this commit)
+
+This project's OpenClaw gateway is already linked to a real WhatsApp
+account (Week 0) and `~/.openclaw/openclaw.json` already registers
+`property-search`, `market-stats`, `semantic-search`, and `recommendation`
+as live skills (`skills.entries`) -- confirmed working over WhatsApp before
+`orchestrator` existed. Actually pointing that live config at this skill
+(so WhatsApp messages route through `handle_whatsapp_message()` instead of
+OpenClaw picking among the individual skills itself) means editing that
+config -- a change to shared, already-working personal infrastructure, not
+this repo. That edit is intentionally left for a separate, explicit step
+rather than done automatically as part of this commit.
+
+Tests: `python skills/orchestrator/test_whatsapp.py` (17 checks -- emoji
+prefixing per intent, truncation behavior, and `handle_whatsapp_message()`
+end to end including the exception -> friendly-reply path).
