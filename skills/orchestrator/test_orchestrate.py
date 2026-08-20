@@ -108,5 +108,13 @@ mixed_result = orchestrate("orch-mixed", "Find me affordable homes in Pasadena a
 results.append(check("mixed intent tagged correctly", mixed_result["intent"] == "mixed"))
 results.append(check("mixed response includes the market leg (Pasadena stats)", "Pasadena" in mixed_result["response"]))
 results.append(check("mixed response merges both legs with a separator", "---" in mixed_result["response"]))
+results.append(check(
+    "mixed's search leg doesn't re-ask for the city the message just named",
+    "What city" not in mixed_result["response"],
+))
+results.append(check(
+    "the pre-seeded city is on the session for the next turn",
+    getSession("orch-mixed").get("city") == "Pasadena",
+))
 
 print(f"\n{sum(results)}/{len(results)} tests passed")

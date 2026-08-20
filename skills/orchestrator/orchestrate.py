@@ -319,6 +319,16 @@ def orchestrate(user_id: str, message: str) -> dict:
 
     if intent == "mixed":
         city = _extract_city(message, user_id)
+        # Pre-seed the search leg's session city from this skill's own
+        # lenient extraction before handleMessage() runs its stricter
+        # parse_property_query() pass -- otherwise a phrasing
+        # parse_property_query() can't cleanly terminate ("...in Pasadena
+        # and tell me...") makes property-search ask "what city?" on the
+        # very message that just named one. _merge_filters() only ever
+        # *sets* session["city"] when its own parse finds one -- it never
+        # clears an already-set value -- so this is safe to pre-seed.
+        if city and session.get("city") is None:
+            session["city"] = city
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             search_future = pool.submit(handleMessage, user_id, message)
             market_future = pool.submit(format_market_summary, city) if city else None

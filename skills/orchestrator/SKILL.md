@@ -117,22 +117,36 @@ misroutes are easy to catch and patch by adding a case to
 
 For `mixed`, the search leg and market leg run concurrently
 (`concurrent.futures.ThreadPoolExecutor`) and are joined with a `---`
-separator. They use two different city-extraction paths on purpose:
+separator. They use two different city-extraction mechanisms:
 
-- The **search leg** calls `property-search`'s own `session.handleMessage()`
-  unmodified, which uses `parse_query.parse_property_query()`'s stricter
-  city regex -- so on a first turn it may ask a clarifying question
-  ("What city are you interested in?") rather than search immediately, same
-  as `property-search` would standalone.
 - The **market leg** uses this skill's own more lenient `_extract_city()`
   (falls back to a loose "in \<Capitalized word(s)\>" match, then the
   user's session city) specifically so a sentence like "...in Pasadena and
-  tell me..." -- which `parse_property_query()` can't cleanly terminate --
-  still resolves to a market summary.
+  tell me..." -- which `parse_query.parse_property_query()` can't cleanly
+  terminate -- still resolves to a market summary.
+- The **search leg** calls `property-search`'s own `session.handleMessage()`
+  unmodified, which uses `parse_property_query()`'s stricter city regex on
+  its own. Left alone, that regex fails on the same "...in Pasadena and
+  tell me..." phrasing property-search's parser was never built to expect,
+  and re-asks "What city are you interested in?" on the very message that
+  just named one -- a real bug caught rehearsing the Week 12 demo live over
+  WhatsApp, not a hypothetical.
 
-This asymmetry is intentional: it reuses `property-search`'s already-tested
-parser as-is rather than loosening it (which could change Week 2-4
-behavior), while still making the flagship mixed example work end-to-end.
+**The fix:** before calling `handleMessage()`, `orchestrate()` pre-seeds
+`session["city"]` with the market leg's own successful extraction (only if
+the session doesn't already have a city). `property-search`'s
+`_merge_filters()` only ever *sets* `session["city"]` when its own parse
+finds one -- it never clears an already-set value -- so pre-seeding is safe
+and doesn't touch `property-search`'s parser at all (still Week 2-4 code,
+unmodified, still passes its own test suite standalone). The search leg
+then sees a city already on the session and moves straight to asking about
+budget instead, same as if the user had stated it in two turns.
+
+This doesn't retire `parse_property_query()`'s stricter regex generally --
+only `orchestrate()`'s `mixed` branch pre-seeds around it. A bare `search`
+message with the same hard-to-terminate phrasing (no market signal, so it
+never reaches this pre-seed) would still hit `property-search`'s original
+behavior standalone.
 
 ### Recommend: resolving which listing
 
