@@ -106,7 +106,6 @@ idx-exchange/
 ├── docs/
 │   └── knowledge/             # RAG source docs: field defs, glossary, CA disclosures, internal docs
 │   └── architecture.md       # Full system architecture + flow diagrams
-│   └── running-e2e.md        # Step-by-step checklist: local deps -> tests -> live gateway -> WhatsApp
 ├── data/                     # SQL dumps (gitignored)
 └── venv/                     # Python environment (gitignored)
 ```
